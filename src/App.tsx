@@ -121,7 +121,7 @@ export default function App() {
       if (project) refreshFiles(project.projectDir);
       const current = selectedFileRef.current;
       if (current && data.path === current.path) {
-        window.electronAPI.readFile(data.path).then((result) => {
+        window.electronAPI?.readFile(data.path).then((result) => {
           if (result.content !== undefined) setFileContent(result.content);
         });
       }
@@ -133,7 +133,7 @@ export default function App() {
     });
 
     return () => {
-      window.electronAPI.removeAllListeners();
+      window.electronAPI?.removeAllListeners();
     };
   }, [project]);
 
@@ -165,6 +165,8 @@ export default function App() {
     } catch { return ''; }
   };
 
+  const stageLabel = getStageLabel();
+
   // When auto-starting via welcome screen, also use current project dir
   const openProjectDir = useCallback(async () => {
     await selectProject();
@@ -182,8 +184,8 @@ export default function App() {
               {project.projectName}
             </span>
           )}
-          {project && getStageLabel() && (
-            <span className="stage-badge">{getStageLabel()}</span>
+          {project && stageLabel && (
+            <span className="stage-badge">{stageLabel}</span>
           )}
         </div>
         <div className="header-right">

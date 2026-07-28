@@ -19,7 +19,7 @@ import uuid
 sys.path.insert(0, os.path.dirname(__file__))
 
 from mqtt_client import get_mqtt_client
-from orchestrator import execute as execute_task
+from orchestrator import execute as execute_std, execute_pipeline
 
 
 def safe_print(obj: dict):
@@ -45,12 +45,79 @@ class Bridge:
         self.mqtt = get_mqtt_client()
         self.project_dir = ""
         self._pending_tasks: dict[str, dict] = {}
+        self._checkpoints: dict[str, dict] = {}
 
         # Wire MQTT callbacks
         self.mqtt.set_handlers(
             on_task=self._on_mqtt_task,
             on_status=self._on_mqtt_status,
         )
+
+    # ── Checkpoint / Resume ─────────────────────────────────────
+
+    @property
+    def _checkpoint_dir(self) -> str:
+        return os.path.join(self.project_dir, ".multi-ai-workflow", "checkpoints")
+
+    def _ensure_checkpoint_dir(self):
+        if self.project_dir:
+            os.makedirs(self._checkpoint_dir, exist_ok=True)
+
+    def _save_checkpoint(self, task_id: str, state: dict):
+        """Persist execution state to disk for resume capability."""
+        if not self.project_dir:
+            return
+        self._ensure_checkpoint_dir()
+        state["saved_at"] = time.time()
+        state["saved_iso"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        filepath = os.path.join(self._checkpoint_dir, f"{task_id}.json")
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+        self._checkpoints[task_id] = state
+        safe_print({"event": "checkpoint_saved", "data": {
+            "task_id": task_id, "file": filepath, "stage": state.get("stage", "unknown"),
+        }})
+
+    def _resume_checkpoint(self, task_id: str) -> dict | None:
+        """Load a saved checkpoint. Returns None if not found."""
+        # Check in-memory first
+        if task_id in self._checkpoints:
+            return self._checkpoints[task_id]
+
+        if not self.project_dir:
+            return None
+        filepath = os.path.join(self._checkpoint_dir, f"{task_id}.json")
+        if os.path.exists(filepath):
+            with open(filepath, "r", encoding="utf-8") as f:
+                state = json.load(f)
+            self._checkpoints[task_id] = state
+            return state
+        return None
+
+    def _list_checkpoints(self) -> list[dict]:
+        """List all saved checkpoints with summary info."""
+        if not self.project_dir:
+            return []
+        ckpt_dir = self._checkpoint_dir
+        if not os.path.isdir(ckpt_dir):
+            return []
+        summaries = []
+        for fname in sorted(os.listdir(ckpt_dir), reverse=True):
+            if fname.endswith(".json"):
+                fpath = os.path.join(ckpt_dir, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        state = json.load(f)
+                    summaries.append({
+                        "task_id": state.get("task_id", fname.replace(".json", "")),
+                        "title": state.get("title", ""),
+                        "stage": state.get("stage", "unknown"),
+                        "saved_at": state.get("saved_at", 0),
+                        "status": state.get("status", "unknown"),
+                    })
+                except Exception:
+                    pass
+        return summaries
 
     # ── MQTT callbacks ──────────────────────────────────────────
 
@@ -161,9 +228,27 @@ class Bridge:
         safe_print({"event": "project_set", "data": {"dir": self.project_dir}})
 
     def handle_execute_task(self, data: dict):
-        """Execute a task via the AI orchestrator with progress reporting."""
+        """Execute a task via the AI orchestrator with progress and checkpointing."""
         task_id = data.get("id", str(uuid.uuid4())[:8])
-        safe_print({"event": "task_execution_started", "data": {"task_id": task_id}})
+        title = data.get("title", "Untitled")
+        adversarial = data.get("adversarial", False)
+        pipeline_mode = data.get("pipeline", False)
+        resume_from_checkpoint = data.get("resume_from_checkpoint", False)
+
+        # Check for existing checkpoint to resume from
+        checkpoint = None
+        if resume_from_checkpoint:
+            checkpoint = self._resume_checkpoint(task_id)
+            if checkpoint:
+                safe_print({"event": "checkpoint_resumed", "data": {
+                    "task_id": task_id, "stage": checkpoint.get("stage"),
+                    "saved_at": checkpoint.get("saved_iso"),
+                }})
+
+        safe_print({"event": "task_execution_started", "data": {
+            "task_id": task_id,
+            "mode": "pipeline" if pipeline_mode else ("adversarial" if adversarial else "standard"),
+        }})
 
         # Progress: analyzing
         safe_print({"event": "task_progress", "data": {
@@ -173,8 +258,43 @@ class Bridge:
         if self.mqtt.connected:
             self.mqtt.publish_status(task_id, "analyzing", 0.1)
 
+        # Checkpoint: initial state
+        self._save_checkpoint(task_id, {
+            "task_id": task_id,
+            "title": title,
+            "stage": "analyzing",
+            "status": "running",
+            "mode": "pipeline" if pipeline_mode else ("adversarial" if adversarial else "standard"),
+            "task_data": data,
+            "started_at": time.time(),
+            "resumed": checkpoint is not None,
+        })
+
         try:
-            result = execute_task(data)
+            if pipeline_mode:
+                result = execute_pipeline(
+                    task_data=data,
+                    stages=data.get("stages"),
+                    adversarial=adversarial,
+                )
+            else:
+                result = execute_std(task_data=data, adversarial=adversarial)
+
+            # Checkpoint: completed
+            self._save_checkpoint(task_id, {
+                "task_id": task_id,
+                "title": title,
+                "stage": "completed",
+                "status": result.get("status", "completed"),
+                "mode": "pipeline" if pipeline_mode else ("adversarial" if adversarial else "standard"),
+                "result_summary": {
+                    "level": result.get("level"),
+                    "duration_ms": result.get("duration_ms"),
+                    "passed": result.get("passed"),
+                    "final_result_preview": (result.get("final_result", "") or "")[:500],
+                },
+                "completed_at": time.time(),
+            })
 
             # Progress: done
             safe_print({"event": "task_progress", "data": {
@@ -203,6 +323,16 @@ class Bridge:
 
         except Exception as e:
             tb = traceback.format_exc()
+            # Checkpoint: error state for later resume
+            self._save_checkpoint(task_id, {
+                "task_id": task_id,
+                "title": title,
+                "stage": "error",
+                "status": "failed",
+                "error": str(e),
+                "traceback": tb[-2000:],
+                "failed_at": time.time(),
+            })
             safe_print({"event": "task_error", "data": {
                 "task_id": task_id,
                 "error": str(e),
@@ -244,17 +374,15 @@ class Bridge:
         topic = data.get("topic", "workflow/tasks/manual")
         payload = json.dumps(data.get("payload", {}), ensure_ascii=False)
         if self.mqtt.connected:
-            # Use paho directly
-            import paho.mqtt.publish as pub
-            pub.single(topic, payload, hostname=self.mqtt._broker_host, port=self.mqtt._broker_port)
-            safe_print({"event": "mqtt_published", "data": {"topic": topic}})
+            ok = self.mqtt.publish_message(topic, payload)
+            safe_print({"event": "mqtt_published" if ok else "mqtt_error", "data": {"topic": topic}})
         else:
             safe_print({"event": "mqtt_error", "data": {"error": "Not connected"}})
 
 
 def main():
     bridge = Bridge()
-    safe_print({"event": "bridge_ready", "data": {"version": "0.2.0"}})
+    safe_print({"event": "bridge_ready", "data": {"version": "1.0.0"}})
 
     for line in sys.stdin:
         try:
@@ -276,6 +404,36 @@ def main():
 
             elif action == "execute_task":
                 bridge.handle_execute_task(data)
+
+            elif action == "resume_task":
+                # Resume from checkpoint
+                task_id = data.get("task_id", "")
+                checkpoint = bridge._resume_checkpoint(task_id)
+                if checkpoint and checkpoint.get("task_data"):
+                    safe_print({"event": "checkpoint_found", "data": {
+                        "task_id": task_id, "stage": checkpoint.get("stage"),
+                        "saved_at": checkpoint.get("saved_iso"),
+                    }})
+                    # Re-execute with resume flag
+                    task_data = checkpoint["task_data"]
+                    task_data["resume_from_checkpoint"] = True
+                    task_data["id"] = task_id
+                    bridge.handle_execute_task(task_data)
+                else:
+                    safe_print({"event": "error", "data": f"Checkpoint not found for task: {task_id}"})
+
+            elif action == "list_checkpoints":
+                checkpoints = bridge._list_checkpoints()
+                safe_print({"event": "checkpoints_list", "data": {"checkpoints": checkpoints}})
+
+            elif action == "delete_checkpoint":
+                task_id = data.get("task_id", "")
+                ckpt_file = os.path.join(bridge._checkpoint_dir, f"{task_id}.json")
+                if os.path.exists(ckpt_file):
+                    os.remove(ckpt_file)
+                    safe_print({"event": "checkpoint_deleted", "data": {"task_id": task_id}})
+                else:
+                    safe_print({"event": "error", "data": f"Checkpoint not found: {task_id}"})
 
             elif action == "publish_mqtt":
                 bridge.handle_publish_mqtt(data)

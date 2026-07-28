@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { ChildProcess, spawn } from 'child_process';
 const { watch } = require('chokidar');
 import type { FSWatcher } from 'chokidar';
+import type { IpcMainInvokeEvent, Event as ElectronEvent } from 'electron';
 
 let mainWindow: typeof BrowserWindow | null = null;
 let tray: typeof Tray | null = null;
@@ -35,6 +36,7 @@ function startBridge(projectDir?: string) {
     bridgeProcess.kill();
     bridgeProcess = null;
     bridgeReady = false;
+    pendingBridgeCallbacks = [];
   }
 
   const pythonPath = getPythonPath();
@@ -73,6 +75,7 @@ function startBridge(projectDir?: string) {
     console.log(`[Main] Bridge exited with code ${code}`);
     bridgeReady = false;
     bridgeProcess = null;
+    pendingBridgeCallbacks = [];
   });
 
   bridgeProcess.on('error', (err: Error) => {
@@ -146,8 +149,7 @@ function handleBridgeMessage(msg: any) {
     case 'mqtt_error':
     case 'provider_configured':
     case 'project_set':
-      // Forward all bridge events to renderer
-      mainWindow?.webContents.send(event, data);
+      // These events are not listened to by the renderer — no-op
       break;
 
     case 'task_progress':
@@ -166,6 +168,7 @@ function stopBridge() {
     bridgeProcess.kill();
     bridgeProcess = null;
     bridgeReady = false;
+    pendingBridgeCallbacks = [];
   }
 }
 
@@ -243,7 +246,7 @@ function createWindow() {
   }
 
   // Minimize to tray instead of closing
-  mainWindow.on('close', (event) => {
+  mainWindow.on('close', (event: ElectronEvent) => {
     if (!isQuitting) {
       event.preventDefault();
       mainWindow?.hide();
@@ -269,14 +272,15 @@ function startWatching(dir: string) {
 
   watchDir = dir;
 
-  watcher = watch(workflowDir, {
+  const newWatcher = watch(workflowDir, {
     ignored: /(^|[\/\\])\../,
     persistent: true,
     ignoreInitial: false,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
   });
+  watcher = newWatcher;
 
-  watcher.on('add', (filePath: string) => {
+  newWatcher.on('add', (filePath: string) => {
     if (filePath.endsWith('.md')) {
       mainWindow?.webContents.send('file-added', {
         path: filePath,
@@ -286,7 +290,7 @@ function startWatching(dir: string) {
     }
   });
 
-  watcher.on('change', (filePath: string) => {
+  newWatcher.on('change', (filePath: string) => {
     if (filePath.endsWith('.md')) {
       mainWindow?.webContents.send('file-changed', {
         path: filePath,
@@ -296,7 +300,7 @@ function startWatching(dir: string) {
     }
   });
 
-  watcher.on('unlink', (filePath: string) => {
+  newWatcher.on('unlink', (filePath: string) => {
     if (filePath.endsWith('.md')) {
       mainWindow?.webContents.send('file-removed', {
         path: filePath,
@@ -363,7 +367,7 @@ ipcMain.handle('select-project', async () => {
   };
 });
 
-ipcMain.handle('open-project', async (_event, dir: string) => {
+ipcMain.handle('open-project', async (_event: IpcMainInvokeEvent,dir: string) => {
   if (!fs.existsSync(dir)) {
     return { error: '目录不存在' };
   }
@@ -381,7 +385,7 @@ ipcMain.handle('open-project', async (_event, dir: string) => {
   };
 });
 
-ipcMain.handle('read-file', async (_event, filePath: string) => {
+ipcMain.handle('read-file', async (_event: IpcMainInvokeEvent,filePath: string) => {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
     return { content, path: filePath };
@@ -390,7 +394,7 @@ ipcMain.handle('read-file', async (_event, filePath: string) => {
   }
 });
 
-ipcMain.handle('write-file', async (_event, filePath: string, content: string) => {
+ipcMain.handle('write-file', async (_event: IpcMainInvokeEvent,filePath: string, content: string) => {
   try {
     fs.writeFileSync(filePath, content, 'utf-8');
     return { success: true };
@@ -399,7 +403,7 @@ ipcMain.handle('write-file', async (_event, filePath: string, content: string) =
   }
 });
 
-ipcMain.handle('append-to-file', async (_event, filePath: string, text: string) => {
+ipcMain.handle('append-to-file', async (_event: IpcMainInvokeEvent,filePath: string, text: string) => {
   try {
     fs.appendFileSync(filePath, text, 'utf-8');
     return { success: true };
@@ -408,7 +412,7 @@ ipcMain.handle('append-to-file', async (_event, filePath: string, text: string) 
   }
 });
 
-ipcMain.handle('get-file-info', async (_event, filePath: string) => {
+ipcMain.handle('get-file-info', async (_event: IpcMainInvokeEvent,filePath: string) => {
   try {
     const stat = fs.statSync(filePath);
     const name = path.basename(filePath);
@@ -418,12 +422,12 @@ ipcMain.handle('get-file-info', async (_event, filePath: string) => {
   }
 });
 
-ipcMain.handle('open-file-externally', async (_event, filePath: string) => {
+ipcMain.handle('open-file-externally', async (_event: IpcMainInvokeEvent,filePath: string) => {
   const { shell } = require('electron');
   await shell.openPath(filePath);
 });
 
-ipcMain.handle('detect-file-type', async (_event, fileName: string) => {
+ipcMain.handle('detect-file-type', async (_event: IpcMainInvokeEvent,fileName: string) => {
   const name = fileName.toLowerCase();
   if (name.includes('checkpoint') || name.includes('检查点')) return 'checkpoint';
   if (name.includes('handoff') || name.includes('payload')) return 'handoff';
@@ -437,7 +441,7 @@ ipcMain.handle('detect-file-type', async (_event, fileName: string) => {
 
 // ── MQTT / Bridge IPC ─────────────────────────────────────────
 
-ipcMain.handle('bridge-start-mqtt', async (_event, config: {
+ipcMain.handle('bridge-start-mqtt', async (_event: IpcMainInvokeEvent,config: {
   broker?: string; port?: number; task_topic?: string; result_topic?: string;
 }) => {
   if (!bridgeProcess) {
@@ -470,7 +474,7 @@ ipcMain.handle('bridge-stop-mqtt', async () => {
   return { success: true };
 });
 
-ipcMain.handle('bridge-execute-task', async (_event, taskData: {
+ipcMain.handle('bridge-execute-task', async (_event: IpcMainInvokeEvent,taskData: {
   title: string; description: string; priority?: string; id?: string;
 }) => {
   const taskId = taskData.id || `manual_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -486,17 +490,32 @@ ipcMain.handle('bridge-execute-task', async (_event, taskData: {
   return { taskId };
 });
 
-ipcMain.handle('bridge-publish-mqtt', async (_event, data: {
+ipcMain.handle('bridge-publish-mqtt', async (_event: IpcMainInvokeEvent,data: {
   topic: string; payload: object;
 }) => {
   sendToBridge({ action: 'publish_mqtt', data });
   return { success: true };
 });
 
-ipcMain.handle('bridge-configure-provider', async (_event, data: {
+ipcMain.handle('bridge-configure-provider', async (_event: IpcMainInvokeEvent,data: {
   provider: string; api_key: string; endpoint?: string; enabled?: boolean;
 }) => {
   sendToBridge({ action: 'configure_provider', data });
+  return { success: true };
+});
+
+ipcMain.handle('bridge-resume-task', async (_event: IpcMainInvokeEvent, data: { task_id: string }) => {
+  sendToBridge({ action: 'resume_task', data });
+  return { success: true };
+});
+
+ipcMain.handle('bridge-list-checkpoints', async () => {
+  sendToBridge({ action: 'list_checkpoints', data: {} });
+  return { checkpoints: [] }; // Response comes async via checkpoints_list event
+});
+
+ipcMain.handle('bridge-delete-checkpoint', async (_event: IpcMainInvokeEvent, data: { task_id: string }) => {
+  sendToBridge({ action: 'delete_checkpoint', data });
   return { success: true };
 });
 

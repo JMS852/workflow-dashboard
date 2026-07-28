@@ -42,12 +42,17 @@ export default function MqttPanel({ onStatusChange, onManualTask }: Props) {
   const handleConnect = async () => {
     if (!window.electronAPI) return;
     setStatusText('连接中...');
-    await window.electronAPI.bridgeStartMqtt({
-      broker,
-      port,
-      task_topic: 'workflow/tasks/#',
-      result_topic: 'workflow/results',
-    });
+    try {
+      await window.electronAPI.bridgeStartMqtt({
+        broker,
+        port,
+        task_topic: 'workflow/tasks/#',
+        result_topic: 'workflow/results',
+      });
+    } catch (err: any) {
+      setStatusText(`连接失败: ${err?.message || '未知错误'}`);
+      setConnected(false);
+    }
   };
 
   const handleDisconnect = async () => {
@@ -61,13 +66,17 @@ export default function MqttPanel({ onStatusChange, onManualTask }: Props) {
     if (!taskTitle.trim() || !window.electronAPI) return;
     const title = taskTitle.trim();
     const desc = taskDesc.trim();
-    await window.electronAPI.bridgePublishMqtt({
-      topic: 'workflow/tasks/manual',
-      payload: { title, description: desc, priority: 'medium' },
-    });
-    onManualTask?.(title, desc);
-    setTaskTitle('');
-    setTaskDesc('');
+    try {
+      await window.electronAPI.bridgePublishMqtt({
+        topic: 'workflow/tasks/manual',
+        payload: { title, description: desc, priority: 'medium' },
+      });
+      onManualTask?.(title, desc);
+      setTaskTitle('');
+      setTaskDesc('');
+    } catch (err: any) {
+      setStatusText(`发送失败: ${err?.message || '未知错误'}`);
+    }
   };
 
   const statusColor = connected ? '#10b981' : '#6b7280';

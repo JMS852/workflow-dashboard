@@ -206,16 +206,6 @@ body {
   overflow: hidden;
 }
 
-.decision-panel-outer {
-  width: 280px;
-  background: var(--bg-secondary);
-  border-left: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
 .decision-panel {
   padding: 16px;
   overflow-y: auto;
