@@ -1,0 +1,32 @@
+{
+  "name": "workflow-dashboard",
+  "version": "0.1.0",
+  "description": "Multi-AI Workflow Dashboard — 多AI协作工作流指挥台",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "start": "node launcher.js",
+    "start:dev": "npx tsc -p tsconfig.electron.json && set ELECTRON_RUN_AS_NODE= && npx electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "highlight.js": "^11.9.0",
+    "lucide-react": "^1.27.0",
+    "marked": "^12.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@vitejs/plugin-react": "^4.2.1",
+    "electron": "^28.2.0",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12"
+  }
+}

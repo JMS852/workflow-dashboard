@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dist-electron/
+.vite/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+release/
+out/
+.env
+.env.local
+*.log
