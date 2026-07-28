@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
+import type { IpcRendererEvent } from 'electron';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // File operations
@@ -13,13 +14,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // File watcher events
   onFileAdded: (callback: (data: any) => void) => {
-    ipcRenderer.on('file-added', (_event, data) => callback(data));
+    ipcRenderer.on('file-added', (_event: IpcRendererEvent, data: any) => callback(data));
   },
   onFileChanged: (callback: (data: any) => void) => {
-    ipcRenderer.on('file-changed', (_event, data) => callback(data));
+    ipcRenderer.on('file-changed', (_event: IpcRendererEvent, data: any) => callback(data));
   },
   onFileRemoved: (callback: (data: any) => void) => {
-    ipcRenderer.on('file-removed', (_event, data) => callback(data));
+    ipcRenderer.on('file-removed', (_event: IpcRendererEvent, data: any) => callback(data));
   },
 
   // MQTT Bridge
@@ -28,48 +29,52 @@ contextBridge.exposeInMainWorld('electronAPI', {
   bridgeExecuteTask: (taskData: object) => ipcRenderer.invoke('bridge-execute-task', taskData),
   bridgePublishMqtt: (data: object) => ipcRenderer.invoke('bridge-publish-mqtt', data),
   bridgeConfigureProvider: (data: object) => ipcRenderer.invoke('bridge-configure-provider', data),
+  bridgeResumeTask: (taskId: string) => ipcRenderer.invoke('bridge-resume-task', { task_id: taskId }),
+  bridgeListCheckpoints: () => ipcRenderer.invoke('bridge-list-checkpoints'),
+  bridgeDeleteCheckpoint: (taskId: string) => ipcRenderer.invoke('bridge-delete-checkpoint', { task_id: taskId }),
 
   // Bridge events
   onBridgeReady: (callback: (data: any) => void) => {
-    ipcRenderer.on('bridge-ready', (_event, data) => callback(data));
+    ipcRenderer.on('bridge-ready', (_event: IpcRendererEvent, data: any) => callback(data));
   },
   onBridgeError: (callback: (data: any) => void) => {
-    ipcRenderer.on('bridge-error', (_event, data) => callback(data));
+    ipcRenderer.on('bridge-error', (_event: IpcRendererEvent, data: any) => callback(data));
   },
   onMqttStatus: (callback: (data: any) => void) => {
-    ipcRenderer.on('mqtt-status', (_event, data) => callback(data));
+    ipcRenderer.on('mqtt-status', (_event: IpcRendererEvent, data: any) => callback(data));
   },
   onMqttTask: (callback: (data: any) => void) => {
-    ipcRenderer.on('mqtt-task', (_event, data) => callback(data));
+    ipcRenderer.on('mqtt-task', (_event: IpcRendererEvent, data: any) => callback(data));
   },
   onTaskFileCreated: (callback: (data: any) => void) => {
-    ipcRenderer.on('task-file-created', (_event, data) => callback(data));
+    ipcRenderer.on('task-file-created', (_event: IpcRendererEvent, data: any) => callback(data));
   },
   onTaskExecutionStarted: (callback: (data: any) => void) => {
-    ipcRenderer.on('task-execution-started', (_event, data) => callback(data));
+    ipcRenderer.on('task-execution-started', (_event: IpcRendererEvent, data: any) => callback(data));
   },
   onTaskExecuted: (callback: (data: any) => void) => {
-    ipcRenderer.on('task-executed', (_event, data) => callback(data));
+    ipcRenderer.on('task-executed', (_event: IpcRendererEvent, data: any) => callback(data));
   },
   onTaskExecutionError: (callback: (data: any) => void) => {
-    ipcRenderer.on('task-execution-error', (_event, data) => callback(data));
+    ipcRenderer.on('task-execution-error', (_event: IpcRendererEvent, data: any) => callback(data));
   },
   onTaskProgress: (callback: (data: any) => void) => {
-    ipcRenderer.on('task_progress', (_event, data) => callback(data));
+    ipcRenderer.on('task_progress', (_event: IpcRendererEvent, data: any) => callback(data));
+  },
+  onCheckpointSaved: (callback: (data: any) => void) => {
+    ipcRenderer.on('checkpoint_saved', (_event: IpcRendererEvent, data: any) => callback(data));
+  },
+  onCheckpointResumed: (callback: (data: any) => void) => {
+    ipcRenderer.on('checkpoint_resumed', (_event: IpcRendererEvent, data: any) => callback(data));
+  },
+  onCheckpointsList: (callback: (data: any) => void) => {
+    ipcRenderer.on('checkpoints_list', (_event: IpcRendererEvent, data: any) => callback(data));
   },
 
   removeAllListeners: () => {
-    ipcRenderer.removeAllListeners('file-added');
-    ipcRenderer.removeAllListeners('file-changed');
-    ipcRenderer.removeAllListeners('file-removed');
-    ipcRenderer.removeAllListeners('bridge-ready');
-    ipcRenderer.removeAllListeners('bridge-error');
-    ipcRenderer.removeAllListeners('mqtt-status');
-    ipcRenderer.removeAllListeners('mqtt-task');
-    ipcRenderer.removeAllListeners('task-file-created');
-    ipcRenderer.removeAllListeners('task-execution-started');
-    ipcRenderer.removeAllListeners('task-executed');
-    ipcRenderer.removeAllListeners('task-execution-error');
-    ipcRenderer.removeAllListeners('task_progress');
+    const channels = ipcRenderer.eventNames();
+    for (const channel of channels) {
+      ipcRenderer.removeAllListeners(channel as string);
+    }
   },
 });

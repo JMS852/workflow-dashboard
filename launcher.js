@@ -38,11 +38,13 @@ try {
 // Step 3: Launch Electron
 console.log('[Launcher] Starting Electron...');
 const electronExe = path.join(__dirname, 'node_modules', 'electron', 'dist', 'electron.exe');
+const env = { ...process.env };
+delete env.ELECTRON_RUN_AS_NODE;
 const electron = spawn(electronExe, ['.'], {
   cwd: __dirname,
   stdio: 'inherit',
   detached: true,
-  env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined },
+  env: env,
 });
 electron.unref();
 

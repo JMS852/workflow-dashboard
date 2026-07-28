@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Notification } from '../types';
-import { Bell, FilePlus, FileEdit, FileMinus, Zap, CheckCircle, Radio, X } from 'lucide-react';
+import { Bell, FilePlus, FileEdit, FileMinus, Zap, CheckCircle, Radio, Save, X } from 'lucide-react';
 
 interface Props {
   notifications: Notification[];
@@ -15,6 +15,7 @@ const TYPE_ICONS: Record<Notification['type'], React.ReactNode> = {
   mqtt_task: <Zap size={14} />,
   task_executed: <CheckCircle size={14} />,
   bridge_status: <Radio size={14} />,
+  checkpoint_saved: <Save size={14} />,
 };
 
 const TYPE_COLORS: Record<Notification['type'], string> = {
@@ -24,6 +25,7 @@ const TYPE_COLORS: Record<Notification['type'], string> = {
   mqtt_task: '#f59e0b',
   task_executed: '#10b981',
   bridge_status: '#6366f1',
+  checkpoint_saved: '#8b5cf6',
 };
 
 const TYPE_LABELS: Record<Notification['type'], string> = {
@@ -33,6 +35,7 @@ const TYPE_LABELS: Record<Notification['type'], string> = {
   mqtt_task: 'MQTT任务',
   task_executed: '执行完成',
   bridge_status: '桥接状态',
+  checkpoint_saved: '检查点保存',
 };
 
 export default function NotificationBar({ notifications, onDismiss, onClearAll }: Props) {
