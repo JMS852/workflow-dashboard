@@ -58,6 +58,13 @@ export interface MqttTask {
   received_at: number;
 }
 
+export interface TaskProgress {
+  task_id: string;
+  stage: string;
+  progress: number;
+  message: string;
+}
+
 export interface TaskExecutionResult {
   task_id: string;
   execution_id: string;
@@ -119,6 +126,7 @@ declare global {
       onTaskExecutionStarted: (callback: (data: { task_id: string }) => void) => void;
       onTaskExecuted: (callback: (data: TaskExecutionResult) => void) => void;
       onTaskExecutionError: (callback: (data: { task_id: string; error: string }) => void) => void;
+      onTaskProgress: (callback: (data: TaskProgress) => void) => void;
 
       removeAllListeners: () => void;
     };

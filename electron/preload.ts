@@ -54,6 +54,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onTaskExecutionError: (callback: (data: any) => void) => {
     ipcRenderer.on('task-execution-error', (_event, data) => callback(data));
   },
+  onTaskProgress: (callback: (data: any) => void) => {
+    ipcRenderer.on('task_progress', (_event, data) => callback(data));
+  },
 
   removeAllListeners: () => {
     ipcRenderer.removeAllListeners('file-added');
@@ -67,5 +70,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('task-execution-started');
     ipcRenderer.removeAllListeners('task-executed');
     ipcRenderer.removeAllListeners('task-execution-error');
+    ipcRenderer.removeAllListeners('task_progress');
   },
 });
