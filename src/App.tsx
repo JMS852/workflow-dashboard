@@ -1,10 +1,14 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import type { ProjectInfo, FileEntry, FileContent, FileType, Notification } from './types';
+import type { ProjectInfo, FileEntry, FileType, Notification, TaskFlowItem } from './types';
 import FileTree from './components/FileTree';
 import ContentViewer from './components/ContentViewer';
 import DecisionPanel from './components/DecisionPanel';
 import NotificationBar from './components/NotificationBar';
-import { FileText, FolderOpen, RefreshCw } from 'lucide-react';
+import TaskFlow from './components/TaskFlow';
+import MqttPanel from './components/MqttPanel';
+import { FileText, FolderOpen, RefreshCw, Zap, Radio } from 'lucide-react';
+
+type RightPanelTab = 'decision' | 'mqtt';
 
 export default function App() {
   const [project, setProject] = useState<ProjectInfo | null>(null);
@@ -16,6 +20,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [userInput, setUserInput] = useState('');
   const [decisionFeedback, setDecisionFeedback] = useState<string | null>(null);
+  const [rightPanel, setRightPanel] = useState<RightPanelTab>('decision');
   const notifIdRef = useRef(0);
 
   const addNotification = useCallback((type: Notification['type'], fileName: string) => {
@@ -27,7 +32,7 @@ export default function App() {
       time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       read: false,
     };
-    setNotifications(prev => [n, ...prev].slice(0, 20));
+    setNotifications(prev => [n, ...prev].slice(0, 30));
   }, []);
 
   const refreshFiles = useCallback(async (dir: string) => {
@@ -74,7 +79,6 @@ export default function App() {
     if (result.success) {
       setDecisionFeedback(`✅ 已写入: ${action}`);
       setTimeout(() => setDecisionFeedback(null), 3000);
-      // Refresh file content
       const updated = await window.electronAPI.readFile(selectedFile.path);
       if (updated.content !== undefined) {
         setFileContent(updated.content);
@@ -111,12 +115,9 @@ export default function App() {
     window.electronAPI.onFileChanged((data) => {
       addNotification('changed', data.name);
       if (project) refreshFiles(project.projectDir);
-      // If currently viewing this file, refresh it
       if (selectedFile && data.path === selectedFile.path) {
         window.electronAPI.readFile(data.path).then((result) => {
-          if (result.content !== undefined) {
-            setFileContent(result.content);
-          }
+          if (result.content !== undefined) setFileContent(result.content);
         });
       }
     });
@@ -131,6 +132,22 @@ export default function App() {
     };
   }, [project, selectedFile, addNotification, refreshFiles]);
 
+  // Listen for MQTT task and execution events to show notifications
+  useEffect(() => {
+    if (!window.electronAPI) return;
+    window.electronAPI.onMqttTask((data) => {
+      addNotification('mqtt_task', data.title);
+    });
+    window.electronAPI.onTaskExecuted((data) => {
+      addNotification('task_executed', data.task_id);
+    });
+    window.electronAPI.onMqttStatus((data) => {
+      if (data.status === 'connected' || data.status === 'disconnected') {
+        addNotification('bridge_status', data.status);
+      }
+    });
+  }, [addNotification]);
+
   const dismissNotification = useCallback((id: number) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
   }, []);
@@ -142,6 +159,11 @@ export default function App() {
       return match ? match[1].trim() : '';
     } catch { return ''; }
   };
+
+  // When auto-starting via welcome screen, also use current project dir
+  const openProjectDir = useCallback(async () => {
+    await selectProject();
+  }, [selectProject]);
 
   return (
     <div className="app">
@@ -165,7 +187,7 @@ export default function App() {
               <RefreshCw size={16} />
             </button>
           )}
-          <button className="btn btn-primary" onClick={selectProject} disabled={loading}>
+          <button className="btn btn-primary" onClick={openProjectDir} disabled={loading}>
             <FolderOpen size={16} />
             {loading ? '加载中...' : project ? '切换项目' : '打开项目'}
           </button>
@@ -187,7 +209,7 @@ export default function App() {
             <h2>Multi-AI Workflow Dashboard</h2>
             <p>选择一个包含 <code>.multi-ai-workflow</code> 目录的项目，开始监控和决策。</p>
             <p className="hint">按 multi-ai-workflow 工作流运行的项目会自动生成工作文件。</p>
-            <button className="btn btn-primary btn-large" onClick={selectProject}>
+            <button className="btn btn-primary btn-large" onClick={openProjectDir}>
               <FolderOpen size={20} />
               选择项目目录
             </button>
@@ -197,78 +219,113 @@ export default function App() {
 
       {/* Main content */}
       {project && (
-        <div className="main-content">
-          <aside className="sidebar">
-            <FileTree
-              files={files}
-              selectedFile={selectedFile}
-              onSelectFile={selectFile}
-              projectDir={project.projectDir}
-            />
-          </aside>
+        <>
+          {/* Task Flow section (above the main 3-column layout) */}
+          <div className="task-flow-section">
+            <TaskFlow onSelectTask={() => {}} />
+          </div>
 
-          <main className="viewer">
-            {selectedFile ? (
-              <>
-                <div className="viewer-header">
-                  <span className="viewer-filename">{selectedFile.name}</span>
-                  <span className="viewer-meta">
-                    {new Date(selectedFile.mtime).toLocaleString('zh-CN')}
-                  </span>
+          <div className="main-content">
+            <aside className="sidebar">
+              <FileTree
+                files={files}
+                selectedFile={selectedFile}
+                onSelectFile={selectFile}
+                projectDir={project.projectDir}
+              />
+            </aside>
+
+            <main className="viewer">
+              {selectedFile ? (
+                <>
+                  <div className="viewer-header">
+                    <span className="viewer-filename">{selectedFile.name}</span>
+                    <span className="viewer-meta">
+                      {new Date(selectedFile.mtime).toLocaleString('zh-CN')}
+                    </span>
+                  </div>
+                  <ContentViewer content={fileContent} />
+                </>
+              ) : (
+                <div className="viewer-empty">
+                  <FileText size={40} strokeWidth={1} />
+                  <p>从左侧选择一个文件查看</p>
                 </div>
-                <ContentViewer content={fileContent} />
-              </>
-            ) : (
-              <div className="viewer-empty">
-                <FileText size={40} strokeWidth={1} />
-                <p>从左侧选择一个文件查看</p>
-              </div>
-            )}
-          </main>
+              )}
+            </main>
 
-          <aside className="decision-panel">
-            {selectedFile ? (
-              <>
-                <DecisionPanel
-                  fileType={fileType}
-                  fileName={selectedFile.name}
-                  onDecision={handleDecision}
-                  feedback={decisionFeedback}
-                />
-                <div className="user-note">
-                  <h4>📝 我的批注</h4>
-                  <textarea
-                    value={userInput}
-                    onChange={(e) => setUserInput(e.target.value)}
-                    placeholder="写下你的批注或指令，将追加到文件末尾..."
-                    rows={4}
+            <aside className="right-panel">
+              {/* Tab switcher */}
+              <div className="panel-tabs">
+                <button
+                  className={`panel-tab ${rightPanel === 'decision' ? 'active' : ''}`}
+                  onClick={() => setRightPanel('decision')}
+                >
+                  🎯 决策
+                </button>
+                <button
+                  className={`panel-tab ${rightPanel === 'mqtt' ? 'active' : ''}`}
+                  onClick={() => setRightPanel('mqtt')}
+                >
+                  <Radio size={14} /> MQTT
+                </button>
+              </div>
+
+              {rightPanel === 'decision' ? (
+                <div className="decision-panel">
+                  {selectedFile ? (
+                    <>
+                      <DecisionPanel
+                        fileType={fileType}
+                        fileName={selectedFile.name}
+                        onDecision={handleDecision}
+                        feedback={decisionFeedback}
+                      />
+                      <div className="user-note">
+                        <h4>📝 我的批注</h4>
+                        <textarea
+                          value={userInput}
+                          onChange={(e) => setUserInput(e.target.value)}
+                          placeholder="写下你的批注或指令，将追加到文件末尾..."
+                          rows={4}
+                        />
+                        <button
+                          className="btn btn-primary"
+                          onClick={handleAppendNote}
+                          disabled={!userInput.trim()}
+                          style={{ marginTop: 8, width: '100%' }}
+                        >
+                          写入批注
+                        </button>
+                      </div>
+                      <div className="panel-footer">
+                        <button
+                          className="btn btn-ghost"
+                          onClick={() => selectedFile && window.electronAPI?.openFileExternally(selectedFile.path)}
+                          style={{ width: '100%', marginTop: 8 }}
+                        >
+                          在外部编辑器打开
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="panel-empty">
+                      <p>选择文件后可做决策</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="mqtt-panel-wrapper">
+                  <MqttPanel
+                    onManualTask={(title, desc) => {
+                      addNotification('mqtt_task', title);
+                    }}
                   />
-                  <button
-                    className="btn btn-primary"
-                    onClick={handleAppendNote}
-                    disabled={!userInput.trim()}
-                    style={{ marginTop: 8, width: '100%' }}
-                  >
-                    写入批注
-                  </button>
                 </div>
-                <div className="panel-footer">
-                  <button
-                    className="btn btn-ghost"
-                    onClick={() => selectedFile && window.electronAPI?.openFileExternally(selectedFile.path)}
-                    style={{ width: '100%', marginTop: 8 }}
-                  >
-                    在外部编辑器打开
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="panel-empty">
-                <p>选择文件后可做决策</p>
-              </div>
-            )}
-          </aside>
-        </div>
+              )}
+            </aside>
+          </div>
+        </>
       )}
     </div>
   );
