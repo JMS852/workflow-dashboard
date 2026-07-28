@@ -172,18 +172,19 @@ function stopBridge() {
 // ── Window ────────────────────────────────────────────────────
 
 function createWindow() {
+  const iconPath = path.join(__dirname, '..', 'assets', 'icon.ico');
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1000,
     minHeight: 700,
     title: 'Workflow Dashboard',
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
-    icon: undefined,
   });
 
   if (process.env.VITE_DEV_SERVER_URL) {
@@ -440,6 +441,10 @@ ipcMain.handle('bridge-configure-provider', async (_event, data: {
   sendToBridge({ action: 'configure_provider', data });
   return { success: true };
 });
+
+// ── App Identity ──────────────────────────────────────────────
+// Must be set BEFORE app.whenReady() for taskbar pinning
+app.setAppUserModelId('com.mqttick.workflow-dashboard');
 
 // ── App Lifecycle ─────────────────────────────────────────────
 
