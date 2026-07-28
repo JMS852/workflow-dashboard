@@ -56,7 +56,7 @@ export default function DecisionPanel({ fileType, fileName, onDecision, feedback
       setActiveDecision(d.action);
       return;
     }
-    onDecision(d.action, reason);
+    onDecision(d.action, d.requiresReason ? reason : '');
     setReason('');
     setActiveDecision(null);
   };

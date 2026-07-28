@@ -162,12 +162,10 @@ function handleBridgeMessage(msg: any) {
 
 function stopBridge() {
   if (bridgeProcess) {
-    sendToBridge({ action: 'stop_mqtt' });
-    setTimeout(() => {
-      bridgeProcess?.kill();
-      bridgeProcess = null;
-      bridgeReady = false;
-    }, 500);
+    try { sendToBridge({ action: 'stop_mqtt' }); } catch {}
+    bridgeProcess.kill();
+    bridgeProcess = null;
+    bridgeReady = false;
   }
 }
 
@@ -444,14 +442,16 @@ ipcMain.handle('bridge-start-mqtt', async (_event, config: {
 }) => {
   if (!bridgeProcess) {
     startBridge(watchDir);
-    // Wait briefly for bridge to be ready
-    await new Promise<void>(resolve => {
+    // Wait up to 10s for bridge to be ready
+    await new Promise<void>((resolve, reject) => {
+      const started = Date.now();
       const check = () => {
         if (bridgeReady) resolve();
+        else if (Date.now() - started > 10000) reject(new Error('Bridge startup timeout'));
         else setTimeout(check, 100);
       };
       check();
-    });
+    }).catch(() => { /* bridge failed to start, continue anyway */ });
   }
   sendToBridge({
     action: 'start_mqtt',
@@ -471,9 +471,9 @@ ipcMain.handle('bridge-stop-mqtt', async () => {
 });
 
 ipcMain.handle('bridge-execute-task', async (_event, taskData: {
-  title: string; description: string; priority?: string;
+  title: string; description: string; priority?: string; id?: string;
 }) => {
-  const taskId = `manual_${Date.now()}`;
+  const taskId = taskData.id || `manual_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   sendToBridge({
     action: 'execute_task',
     data: {

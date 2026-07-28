@@ -55,7 +55,7 @@ def call_ai(prompt: str, provider: str = 'deepseek', temperature: float = 0.3) -
 
 
 def call_multiple(prompt: str, providers: list[str], timeout: float = 120) -> list[dict]:
-    """并行调用多个 AI，收齐 2 个后再等 90s 熔断其余"""
+    """并行调用多个 AI，收齐 2 个即熔断其余"""
     _init_providers()
     results = []
 
@@ -67,16 +67,23 @@ def call_multiple(prompt: str, providers: list[str], timeout: float = 120) -> li
                 futures[executor.submit(p.chat, prompt)] = name
 
         done_count = 0
-        for future in concurrent.futures.as_completed(futures, timeout=timeout):
-            name = futures[future]
-            try:
-                resp = future.result()
-                results.append({'provider': name, 'content': _sanitize(resp.content), 'success': True})
-                done_count += 1
-            except Exception as e:
-                results.append({'provider': name, 'content': str(e), 'success': False})
+        try:
+            for future in concurrent.futures.as_completed(futures, timeout=timeout):
+                name = futures[future]
+                try:
+                    resp = future.result()
+                    results.append({'provider': name, 'content': _sanitize(resp.content), 'success': True})
+                    done_count += 1
+                except Exception as e:
+                    results.append({'provider': name, 'content': str(e), 'success': False})
 
-            if done_count >= 2:
-                break
+                if done_count >= 2:
+                    # Cancel remaining futures to implement true circuit-break
+                    for f in futures:
+                        f.cancel()
+                    break
+        except concurrent.futures.TimeoutError:
+            # Collect whatever completed before timeout
+            pass
 
     return results

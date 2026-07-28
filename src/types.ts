@@ -113,7 +113,7 @@ declare global {
       // Bridge commands
       bridgeStartMqtt: (config: MqttConfig) => Promise<{ success: boolean }>;
       bridgeStopMqtt: () => Promise<{ success: boolean }>;
-      bridgeExecuteTask: (taskData: { title: string; description: string; priority?: string }) => Promise<{ taskId: string }>;
+      bridgeExecuteTask: (taskData: { title: string; description: string; priority?: string; id?: string }) => Promise<{ taskId: string }>;
       bridgePublishMqtt: (data: { topic: string; payload: object }) => Promise<{ success: boolean }>;
       bridgeConfigureProvider: (data: { provider: string; api_key: string; endpoint?: string; enabled?: boolean }) => Promise<{ success: boolean }>;
 
