@@ -14,6 +14,7 @@ import sys
 import time
 import traceback
 import uuid
+import threading
 
 # Ensure engine/ is on the path for absolute imports
 sys.path.insert(0, os.path.dirname(__file__))
@@ -161,27 +162,39 @@ class Bridge:
         safe_print({"event": "project_set", "data": {"dir": self.project_dir}})
 
     def handle_execute_task(self, data: dict):
-        """Execute a task via the AI orchestrator."""
+        """Execute a task via the AI orchestrator with progress reporting."""
         task_id = data.get("id", str(uuid.uuid4())[:8])
         safe_print({"event": "task_execution_started", "data": {"task_id": task_id}})
 
+        # Progress: analyzing
+        safe_print({"event": "task_progress", "data": {
+            "task_id": task_id, "stage": "analyzing", "progress": 0.1,
+            "message": "正在分析任务...",
+        }})
+        if self.mqtt.connected:
+            self.mqtt.publish_status(task_id, "analyzing", 0.1)
+
         try:
             result = execute_task(data)
+
+            # Progress: done
+            safe_print({"event": "task_progress", "data": {
+                "task_id": task_id, "stage": "completed", "progress": 1.0,
+                "message": f"完成 (L{result.get('level','?')}, {result.get('duration_ms',0)}ms)",
+            }})
             safe_print({"event": "task_executed", "data": {**result, "task_id": task_id}})
 
             # Publish result to MQTT if connected
             if self.mqtt.connected:
                 self.mqtt.publish_result(task_id, result)
 
-            # Append result to the task file
+            # Write result files
             if self.project_dir:
                 ts = time.strftime("%Y%m%d_%H%M%S")
                 filename = f"task_{task_id}_{ts}.md"
                 content = self._format_task_md(data) + self._format_result_md(data, result)
                 write_workflow_file(self.project_dir, filename, content)
 
-            # Also write a handoff-style report
-            if self.project_dir:
                 report = self._format_handoff_md(task_id, data, result)
                 write_workflow_file(
                     self.project_dir,

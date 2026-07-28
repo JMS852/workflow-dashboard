@@ -148,8 +148,13 @@ function handleBridgeMessage(msg: any) {
       mainWindow?.webContents.send(event, data);
       break;
 
+    case 'task_progress':
+      mainWindow?.webContents.send('task_progress', data);
+      break;
+
     default:
-      console.log('[Main] Unhandled bridge event:', event);
+      // Forward unknown events to renderer as-is
+      mainWindow?.webContents.send(event, data);
   }
 }
 

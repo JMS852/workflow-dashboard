@@ -6,9 +6,10 @@ import DecisionPanel from './components/DecisionPanel';
 import NotificationBar from './components/NotificationBar';
 import TaskFlow from './components/TaskFlow';
 import MqttPanel from './components/MqttPanel';
-import { FileText, FolderOpen, RefreshCw, Zap, Radio } from 'lucide-react';
+import ProviderSettings from './components/ProviderSettings';
+import { FileText, FolderOpen, RefreshCw, Zap, Radio, Key } from 'lucide-react';
 
-type RightPanelTab = 'decision' | 'mqtt';
+type RightPanelTab = 'decision' | 'mqtt' | 'provider';
 
 export default function App() {
   const [project, setProject] = useState<ProjectInfo | null>(null);
@@ -269,9 +270,15 @@ export default function App() {
                 >
                   <Radio size={14} /> MQTT
                 </button>
+                <button
+                  className={`panel-tab ${rightPanel === 'provider' ? 'active' : ''}`}
+                  onClick={() => setRightPanel('provider')}
+                >
+                  <Key size={14} /> AI
+                </button>
               </div>
 
-              {rightPanel === 'decision' ? (
+              {rightPanel === 'decision' && (
                 <div className="decision-panel">
                   {selectedFile ? (
                     <>
@@ -314,13 +321,19 @@ export default function App() {
                     </div>
                   )}
                 </div>
-              ) : (
+              )}
+              {rightPanel === 'mqtt' && (
                 <div className="mqtt-panel-wrapper">
                   <MqttPanel
                     onManualTask={(title, desc) => {
                       addNotification('mqtt_task', title);
                     }}
                   />
+                </div>
+              )}
+              {rightPanel === 'provider' && (
+                <div className="mqtt-panel-wrapper">
+                  <ProviderSettings />
                 </div>
               )}
             </aside>
