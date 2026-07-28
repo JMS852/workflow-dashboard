@@ -57,14 +57,6 @@ function getCategoryColor(cat: string): string {
 }
 
 export default function FileTree({ files, selectedFile, onSelectFile, projectDir }: Props) {
-  // Group files by directory
-  const grouped: Record<string, FileEntry[]> = {};
-  for (const f of files) {
-    const dir = f.name.includes('/') ? f.name.split('/').slice(0, -1).join('/') : '(root)';
-    if (!grouped[dir]) grouped[dir] = [];
-    grouped[dir].push(f);
-  }
-
   const sortedFiles = [...files].sort((a, b) => b.mtime.localeCompare(a.mtime));
 
   return (

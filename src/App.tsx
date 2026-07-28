@@ -23,6 +23,9 @@ export default function App() {
   const [decisionFeedback, setDecisionFeedback] = useState<string | null>(null);
   const [rightPanel, setRightPanel] = useState<RightPanelTab>('decision');
   const notifIdRef = useRef(0);
+  const selectedFileRef = useRef<FileEntry | null>(null);
+  // Keep ref in sync so file-watcher callbacks always see latest selection
+  selectedFileRef.current = selectedFile;
 
   const addNotification = useCallback((type: Notification['type'], fileName: string) => {
     const id = ++notifIdRef.current;
@@ -104,7 +107,7 @@ export default function App() {
     }
   }, [selectedFile, userInput]);
 
-  // Setup file watcher listeners
+  // Setup file watcher listeners — only re-run when project changes
   useEffect(() => {
     if (!window.electronAPI) return;
 
@@ -116,7 +119,8 @@ export default function App() {
     window.electronAPI.onFileChanged((data) => {
       addNotification('changed', data.name);
       if (project) refreshFiles(project.projectDir);
-      if (selectedFile && data.path === selectedFile.path) {
+      const current = selectedFileRef.current;
+      if (current && data.path === current.path) {
         window.electronAPI.readFile(data.path).then((result) => {
           if (result.content !== undefined) setFileContent(result.content);
         });
@@ -131,7 +135,7 @@ export default function App() {
     return () => {
       window.electronAPI.removeAllListeners();
     };
-  }, [project, selectedFile, addNotification, refreshFiles]);
+  }, [project]);
 
   // Listen for MQTT task and execution events to show notifications
   useEffect(() => {
@@ -283,6 +287,7 @@ export default function App() {
                   {selectedFile ? (
                     <>
                       <DecisionPanel
+                        key={selectedFile.path}
                         fileType={fileType}
                         fileName={selectedFile.name}
                         onDecision={handleDecision}

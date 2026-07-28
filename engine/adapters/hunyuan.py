@@ -19,7 +19,11 @@ class HunyuanProvider(AIProvider):
     def __init__(self):
         self.secret_id = os.environ.get('HUNYUAN_SECRET_ID', '')
         self.secret_key = os.environ.get('HUNYUAN_SECRET_KEY', '')
-        self.endpoint = 'hunyuan.tencentcloudapi.com'
+        self._default_endpoint = 'hunyuan.tencentcloudapi.com'
+
+    @property
+    def endpoint(self):
+        return self._endpoint or self._default_endpoint
 
     def _resolve_keys(self):
         """Instance-level _api_key (id:key format) takes priority, then env vars."""
@@ -36,10 +40,12 @@ class HunyuanProvider(AIProvider):
     def _sign(self, params: dict) -> dict:
         algorithm = 'TC3-HMAC-SHA256'
         timestamp = int(time.time())
-        date = dt.datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%d')
+        date = dt.datetime.fromtimestamp(timestamp, tz=dt.timezone.utc).strftime('%Y-%m-%d')
         service = 'hunyuan'
 
         sid, skey = self._resolve_keys()
+        if not sid or not skey:
+            raise RuntimeError('Hunyuan credentials not configured')
 
         payload = json.dumps(params)
         canonical_headers = f'content-type:application/json\nhost:{self.endpoint}\n'
@@ -82,6 +88,10 @@ class HunyuanProvider(AIProvider):
         with httpx.Client(timeout=60) as client:
             resp = client.post(f'https://{self.endpoint}', headers=headers, json=params)
         elapsed = (time.time() - start) * 1000
+
+        if resp.status_code >= 400:
+            raise RuntimeError(f'Hunyuan API error {resp.status_code}: {resp.text[:500]}')
+
         data = resp.json()
 
         if 'Response' in data and 'Choices' in data['Response']:

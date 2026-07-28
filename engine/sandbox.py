@@ -143,21 +143,32 @@ def _run_local_subprocess(code: str, test_script: str = None) -> dict:
         f.write(code)
         code_path = f.name
 
+    test_path = None
+    if test_script:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+            f.write(f"import sys; sys.path.insert(0, '{os.path.dirname(code_path)}'); exec(open('{code_path}').read()); {test_script}\nprint('ALL_TESTS_PASSED')")
+            test_path = f.name
+
     try:
         start = time.time()
+        exec_path = test_path or code_path
         result = subprocess.run(
-            ['python', code_path],
+            ['python', exec_path],
             capture_output=True, text=True, timeout=SANDBOX_TIMEOUT
         )
         elapsed = time.time() - start
 
+        success = result.returncode == 0
+        if test_script:
+            success = success and 'ALL_TESTS_PASSED' in result.stdout
+
         return {
-            'success': result.returncode == 0,
+            'success': success,
             'exit_code': result.returncode,
             'stdout': result.stdout[:5000],
             'stderr': result.stderr[:5000],
             'duration_s': round(elapsed, 2),
-            'note': 'Executed locally (Docker not available)',
+            'note': 'Executed locally (Docker not available)' + (' [tests ran]' if test_script else ''),
         }
     except subprocess.TimeoutExpired:
         return {'success': False, 'error': 'Execution timeout'}
@@ -166,3 +177,8 @@ def _run_local_subprocess(code: str, test_script: str = None) -> dict:
             os.unlink(code_path)
         except Exception:
             pass
+        if test_path:
+            try:
+                os.unlink(test_path)
+            except Exception:
+                pass

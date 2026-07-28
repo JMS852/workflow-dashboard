@@ -86,6 +86,7 @@ export default function TaskFlow({ onSelectTask }: Props) {
       return next;
     });
     await window.electronAPI.bridgeExecuteTask({
+      id: task.id,
       title: task.title,
       description: task.description,
       priority: task.priority,

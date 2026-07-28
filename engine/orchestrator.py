@@ -202,8 +202,7 @@ def execute(task_data: dict, user_level: str | None = None) -> dict:
                             language=executable.get('language', 'python')
                         )
                         sandbox_results.append({**r, 'sandbox': exec_result})
-                except Exception as sandbox_err:
-                    print(f'[Orchestrator] Sandbox execution failed: {sandbox_err}', flush=True)
+                except Exception:
                     sandbox_results.append(r)
             else:
                 sandbox_results.append(r)

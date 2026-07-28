@@ -14,7 +14,6 @@ import sys
 import time
 import traceback
 import uuid
-import threading
 
 # Ensure engine/ is on the path for absolute imports
 sys.path.insert(0, os.path.dirname(__file__))
@@ -62,7 +61,7 @@ class Bridge:
         # Write task to workflow directory
         if self.project_dir:
             ts = time.strftime("%Y%m%d_%H%M%S")
-            filename = f"task_{task['id']}_{ts}.md"
+            filename = f"task_{task.get('id', 'unknown')}_{ts}.md"
             content = self._format_task_md(task)
             filepath = write_workflow_file(self.project_dir, filename, content)
             safe_print({"event": "task_file_written", "data": {
