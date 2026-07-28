@@ -1,176 +1,50 @@
-const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage } = require('electron');
+import { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { ChildProcess, spawn } from 'child_process';
-const { watch } = require('chokidar');
-import type { FSWatcher } from 'chokidar';
-import type { IpcMainInvokeEvent, Event as ElectronEvent } from 'electron';
+import { watch, FSWatcher } from 'chokidar';
+import type { IpcMainInvokeEvent } from 'electron';
 
-let mainWindow: typeof BrowserWindow | null = null;
-let tray: typeof Tray | null = null;
+import { SessionStore } from './session-store';
+import { AgentManager, AgentConfig } from './agent-manager';
+import { WorkflowEngine } from './workflow-engine';
+
+let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
 let isQuitting = false;
 let watcher: FSWatcher | null = null;
 let watchDir: string = '';
-let bridgeProcess: ChildProcess | null = null;
-let bridgeReady = false;
-let pendingBridgeCallbacks: Array<() => void> = [];
 
-// ── Python Bridge ─────────────────────────────────────────────
+// ── Core Services ──────────────────────────────────────────────
 
-function getPythonPath(): string {
-  // Use the project's venv Python
-  const venvPython = path.join(__dirname, '..', '.venv', 'Scripts', 'python.exe');
-  if (fs.existsSync(venvPython)) return venvPython;
+const sessionStore = new SessionStore(null);
+const agentManager = new AgentManager(sessionStore);
+const workflowEngine = new WorkflowEngine(agentManager);
 
-  // Fallback: system Python
-  const systemPython = path.join(
-    process.env.LOCALAPPDATA || '',
-    'Programs', 'Python', 'Python312', 'python.exe'
-  );
-  if (fs.existsSync(systemPython)) return systemPython;
-  return 'python';
-}
+// ── Workflow Event Forwarding ──────────────────────────────────
 
-function startBridge(projectDir?: string) {
-  if (bridgeProcess) {
-    bridgeProcess.kill();
-    bridgeProcess = null;
-    bridgeReady = false;
-    pendingBridgeCallbacks = [];
-  }
+workflowEngine.on('state_change', (status) => {
+  mainWindow?.webContents.send('workflow-state-change', status);
+});
 
-  const pythonPath = getPythonPath();
-  const bridgeScript = path.join(__dirname, '..', 'engine', 'bridge.py');
+workflowEngine.on('agent_status_change', (data) => {
+  mainWindow?.webContents.send('workflow-agent-status', data);
+});
 
-  console.log(`[Main] Starting bridge: ${pythonPath} ${bridgeScript}`);
+workflowEngine.on('conclusion_table_ready', (data) => {
+  mainWindow?.webContents.send('workflow-conclusion-table', data);
+});
 
-  bridgeProcess = spawn(pythonPath, [bridgeScript], {
-    stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
-  });
+workflowEngine.on('debate_result', (data) => {
+  mainWindow?.webContents.send('workflow-debate-result', data);
+});
 
-  let buffer = '';
+workflowEngine.on('final_decision', (data) => {
+  mainWindow?.webContents.send('workflow-final-decision', data);
+});
 
-  bridgeProcess.stdout?.on('data', (chunk: Buffer) => {
-    buffer += chunk.toString('utf-8');
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const msg = JSON.parse(line);
-        handleBridgeMessage(msg);
-      } catch {
-        // Skip non-JSON lines
-      }
-    }
-  });
-
-  bridgeProcess.stderr?.on('data', (chunk: Buffer) => {
-    console.error('[Bridge stderr]', chunk.toString());
-  });
-
-  bridgeProcess.on('close', (code: number | null) => {
-    console.log(`[Main] Bridge exited with code ${code}`);
-    bridgeReady = false;
-    bridgeProcess = null;
-    pendingBridgeCallbacks = [];
-  });
-
-  bridgeProcess.on('error', (err: Error) => {
-    console.error('[Main] Bridge spawn error:', err.message);
-    mainWindow?.webContents.send('bridge-error', { error: err.message });
-  });
-
-  // Wait for bridge_ready, then send project_dir
-  const onReady = () => {
-    if (projectDir) {
-      sendToBridge({ action: 'set_project', data: { project_dir: projectDir } });
-    }
-  };
-
-  if (bridgeReady) {
-    onReady();
-  } else {
-    pendingBridgeCallbacks.push(onReady);
-  }
-}
-
-function sendToBridge(msg: object) {
-  if (bridgeProcess?.stdin?.writable) {
-    const line = JSON.stringify(msg) + '\n';
-    bridgeProcess.stdin.write(line);
-  }
-}
-
-function handleBridgeMessage(msg: any) {
-  const event = msg.event;
-  const data = msg.data;
-
-  switch (event) {
-    case 'bridge_ready':
-      bridgeReady = true;
-      console.log('[Main] Bridge ready v' + data?.version);
-      mainWindow?.webContents.send('bridge-ready', data);
-      // Flush pending callbacks
-      for (const cb of pendingBridgeCallbacks) cb();
-      pendingBridgeCallbacks = [];
-      break;
-
-    case 'mqtt_status':
-      mainWindow?.webContents.send('mqtt-status', data);
-      break;
-
-    case 'mqtt_task_received':
-      mainWindow?.webContents.send('mqtt-task', data);
-      break;
-
-    case 'task_file_written':
-      mainWindow?.webContents.send('task-file-created', data);
-      break;
-
-    case 'task_execution_started':
-      mainWindow?.webContents.send('task-execution-started', data);
-      break;
-
-    case 'task_executed':
-      mainWindow?.webContents.send('task-executed', data);
-      break;
-
-    case 'task_error':
-      mainWindow?.webContents.send('task-execution-error', data);
-      break;
-
-    case 'pong':
-    case 'mqtt_started':
-    case 'mqtt_stopped':
-    case 'mqtt_published':
-    case 'mqtt_error':
-    case 'provider_configured':
-    case 'project_set':
-      // These events are not listened to by the renderer — no-op
-      break;
-
-    case 'task_progress':
-      mainWindow?.webContents.send('task_progress', data);
-      break;
-
-    default:
-      // Forward unknown events to renderer as-is
-      mainWindow?.webContents.send(event, data);
-  }
-}
-
-function stopBridge() {
-  if (bridgeProcess) {
-    try { sendToBridge({ action: 'stop_mqtt' }); } catch {}
-    bridgeProcess.kill();
-    bridgeProcess = null;
-    bridgeReady = false;
-    pendingBridgeCallbacks = [];
-  }
-}
+workflowEngine.on('error', (data) => {
+  mainWindow?.webContents.send('workflow-error', data);
+});
 
 // ── Window ────────────────────────────────────────────────────
 
@@ -178,11 +52,9 @@ function createTray() {
   const iconPath = path.join(__dirname, '..', 'assets', 'icon.ico');
   if (!fs.existsSync(iconPath)) return;
 
-  // Create a 16x16 version for tray
   const trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
-
   tray = new Tray(trayIcon);
-  tray.setToolTip('Workflow Dashboard');
+  tray.setToolTip('Workflow Dashboard — 信差平台');
 
   const contextMenu = Menu.buildFromTemplate([
     {
@@ -209,7 +81,6 @@ function createTray() {
   ]);
 
   tray.setContextMenu(contextMenu);
-
   tray.on('double-click', () => {
     if (mainWindow) {
       if (mainWindow.isVisible()) {
@@ -245,8 +116,7 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
-  // Minimize to tray instead of closing
-  mainWindow.on('close', (event: ElectronEvent) => {
+  mainWindow.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault();
       mainWindow?.hide();
@@ -271,16 +141,16 @@ function startWatching(dir: string) {
   }
 
   watchDir = dir;
+  sessionStore.setProjectDir(dir);
 
-  const newWatcher = watch(workflowDir, {
+  watcher = watch(workflowDir, {
     ignored: /(^|[\/\\])\../,
     persistent: true,
     ignoreInitial: false,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
   });
-  watcher = newWatcher;
 
-  newWatcher.on('add', (filePath: string) => {
+  watcher.on('add', (filePath: string) => {
     if (filePath.endsWith('.md')) {
       mainWindow?.webContents.send('file-added', {
         path: filePath,
@@ -290,7 +160,7 @@ function startWatching(dir: string) {
     }
   });
 
-  newWatcher.on('change', (filePath: string) => {
+  watcher.on('change', (filePath: string) => {
     if (filePath.endsWith('.md')) {
       mainWindow?.webContents.send('file-changed', {
         path: filePath,
@@ -300,7 +170,7 @@ function startWatching(dir: string) {
     }
   });
 
-  newWatcher.on('unlink', (filePath: string) => {
+  watcher.on('unlink', (filePath: string) => {
     if (filePath.endsWith('.md')) {
       mainWindow?.webContents.send('file-removed', {
         path: filePath,
@@ -314,9 +184,7 @@ function startWatching(dir: string) {
 
 function scanDirectory(dir: string) {
   const workflowDir = path.join(dir, '.multi-ai-workflow');
-  if (!fs.existsSync(workflowDir)) {
-    return [];
-  }
+  if (!fs.existsSync(workflowDir)) return [];
 
   const files: Array<{ path: string; name: string; size: number; mtime: string }> = [];
   const walkDir = (d: string) => {
@@ -340,7 +208,7 @@ function scanDirectory(dir: string) {
   return files;
 }
 
-// ── IPC Handlers ──────────────────────────────────────────────
+// ── IPC: Project / File ────────────────────────────────────────
 
 ipcMain.handle('select-project', async () => {
   const result = await dialog.showOpenDialog({
@@ -348,17 +216,12 @@ ipcMain.handle('select-project', async () => {
     title: '选择项目目录',
   });
 
-  if (result.canceled || !result.filePaths[0]) {
-    return null;
-  }
+  if (result.canceled || !result.filePaths[0]) return null;
 
   const dir = result.filePaths[0];
   const workflowDir = startWatching(dir);
   const files = scanDirectory(dir);
 
-  // Notify bridge of project change
-  sendToBridge({ action: 'set_project', data: { project_dir: dir } });
-
   return {
     projectDir: dir,
     workflowDir,
@@ -367,16 +230,12 @@ ipcMain.handle('select-project', async () => {
   };
 });
 
-ipcMain.handle('open-project', async (_event: IpcMainInvokeEvent,dir: string) => {
-  if (!fs.existsSync(dir)) {
-    return { error: '目录不存在' };
-  }
+ipcMain.handle('open-project', async (_event: IpcMainInvokeEvent, dir: string) => {
+  if (!fs.existsSync(dir)) return { error: '目录不存在' };
 
   const workflowDir = startWatching(dir);
   const files = scanDirectory(dir);
 
-  sendToBridge({ action: 'set_project', data: { project_dir: dir } });
-
   return {
     projectDir: dir,
     workflowDir,
@@ -385,7 +244,7 @@ ipcMain.handle('open-project', async (_event: IpcMainInvokeEvent,dir: string) =>
   };
 });
 
-ipcMain.handle('read-file', async (_event: IpcMainInvokeEvent,filePath: string) => {
+ipcMain.handle('read-file', async (_event: IpcMainInvokeEvent, filePath: string) => {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
     return { content, path: filePath };
@@ -394,7 +253,7 @@ ipcMain.handle('read-file', async (_event: IpcMainInvokeEvent,filePath: string) 
   }
 });
 
-ipcMain.handle('write-file', async (_event: IpcMainInvokeEvent,filePath: string, content: string) => {
+ipcMain.handle('write-file', async (_event: IpcMainInvokeEvent, filePath: string, content: string) => {
   try {
     fs.writeFileSync(filePath, content, 'utf-8');
     return { success: true };
@@ -403,7 +262,7 @@ ipcMain.handle('write-file', async (_event: IpcMainInvokeEvent,filePath: string,
   }
 });
 
-ipcMain.handle('append-to-file', async (_event: IpcMainInvokeEvent,filePath: string, text: string) => {
+ipcMain.handle('append-to-file', async (_event: IpcMainInvokeEvent, filePath: string, text: string) => {
   try {
     fs.appendFileSync(filePath, text, 'utf-8');
     return { success: true };
@@ -412,7 +271,7 @@ ipcMain.handle('append-to-file', async (_event: IpcMainInvokeEvent,filePath: str
   }
 });
 
-ipcMain.handle('get-file-info', async (_event: IpcMainInvokeEvent,filePath: string) => {
+ipcMain.handle('get-file-info', async (_event: IpcMainInvokeEvent, filePath: string) => {
   try {
     const stat = fs.statSync(filePath);
     const name = path.basename(filePath);
@@ -422,12 +281,12 @@ ipcMain.handle('get-file-info', async (_event: IpcMainInvokeEvent,filePath: stri
   }
 });
 
-ipcMain.handle('open-file-externally', async (_event: IpcMainInvokeEvent,filePath: string) => {
+ipcMain.handle('open-file-externally', async (_event: IpcMainInvokeEvent, filePath: string) => {
   const { shell } = require('electron');
   await shell.openPath(filePath);
 });
 
-ipcMain.handle('detect-file-type', async (_event: IpcMainInvokeEvent,fileName: string) => {
+ipcMain.handle('detect-file-type', async (_event: IpcMainInvokeEvent, fileName: string) => {
   const name = fileName.toLowerCase();
   if (name.includes('checkpoint') || name.includes('检查点')) return 'checkpoint';
   if (name.includes('handoff') || name.includes('payload')) return 'handoff';
@@ -435,92 +294,57 @@ ipcMain.handle('detect-file-type', async (_event: IpcMainInvokeEvent,fileName: s
   if (name.includes('decision') || name.includes('决策')) return 'decision';
   if (name.includes('项目状态')) return 'project_status';
   if (name.includes('recovery')) return 'recovery';
-  if (name.includes('task_')) return 'handoff'; // MQTT task files
+  if (name.includes('task_')) return 'handoff';
   return 'generic';
 });
 
-// ── MQTT / Bridge IPC ─────────────────────────────────────────
+// ── IPC: Workflow ──────────────────────────────────────────────
 
-ipcMain.handle('bridge-start-mqtt', async (_event: IpcMainInvokeEvent,config: {
-  broker?: string; port?: number; task_topic?: string; result_topic?: string;
-}) => {
-  if (!bridgeProcess) {
-    startBridge(watchDir);
-    // Wait up to 10s for bridge to be ready
-    await new Promise<void>((resolve, reject) => {
-      const started = Date.now();
-      const check = () => {
-        if (bridgeReady) resolve();
-        else if (Date.now() - started > 10000) reject(new Error('Bridge startup timeout'));
-        else setTimeout(check, 100);
-      };
-      check();
-    }).catch(() => { /* bridge failed to start, continue anyway */ });
+ipcMain.handle('workflow-submit-task', async (_event: IpcMainInvokeEvent, task: string) => {
+  try {
+    await workflowEngine.startTask(task);
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message };
   }
-  sendToBridge({
-    action: 'start_mqtt',
-    data: {
-      broker: config.broker || 'localhost',
-      port: config.port || 1883,
-      task_topic: config.task_topic || 'workflow/tasks/#',
-      result_topic: config.result_topic || 'workflow/results',
-    },
-  });
+});
+
+ipcMain.handle('workflow-cancel', async () => {
+  workflowEngine.cancel();
   return { success: true };
 });
 
-ipcMain.handle('bridge-stop-mqtt', async () => {
-  sendToBridge({ action: 'stop_mqtt', data: {} });
+ipcMain.handle('workflow-get-status', async () => {
+  return workflowEngine.getStatus();
+});
+
+// ── IPC: Agent ─────────────────────────────────────────────────
+
+ipcMain.handle('agent-register', async (_event: IpcMainInvokeEvent, config: AgentConfig) => {
+  agentManager.registerAgent(config);
   return { success: true };
 });
 
-ipcMain.handle('bridge-execute-task', async (_event: IpcMainInvokeEvent,taskData: {
-  title: string; description: string; priority?: string; id?: string;
-}) => {
-  const taskId = taskData.id || `manual_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  sendToBridge({
-    action: 'execute_task',
-    data: {
-      id: taskId,
-      title: taskData.title,
-      description: taskData.description,
-      priority: taskData.priority || 'medium',
-    },
-  });
-  return { taskId };
-});
-
-ipcMain.handle('bridge-publish-mqtt', async (_event: IpcMainInvokeEvent,data: {
-  topic: string; payload: object;
-}) => {
-  sendToBridge({ action: 'publish_mqtt', data });
+ipcMain.handle('agent-unregister', async (_event: IpcMainInvokeEvent, agentId: string) => {
+  agentManager.unregisterAgent(agentId);
   return { success: true };
 });
 
-ipcMain.handle('bridge-configure-provider', async (_event: IpcMainInvokeEvent,data: {
-  provider: string; api_key: string; endpoint?: string; enabled?: boolean;
-}) => {
-  sendToBridge({ action: 'configure_provider', data });
-  return { success: true };
+ipcMain.handle('agent-list', async () => {
+  return agentManager.listAgents();
 });
 
-ipcMain.handle('bridge-resume-task', async (_event: IpcMainInvokeEvent, data: { task_id: string }) => {
-  sendToBridge({ action: 'resume_task', data });
-  return { success: true };
+ipcMain.handle('agent-check-availability', async () => {
+  return agentManager.checkAllAvailability();
 });
 
-ipcMain.handle('bridge-list-checkpoints', async () => {
-  sendToBridge({ action: 'list_checkpoints', data: {} });
-  return { checkpoints: [] }; // Response comes async via checkpoints_list event
-});
-
-ipcMain.handle('bridge-delete-checkpoint', async (_event: IpcMainInvokeEvent, data: { task_id: string }) => {
-  sendToBridge({ action: 'delete_checkpoint', data });
+ipcMain.handle('agent-update-config', async (_event: IpcMainInvokeEvent, config: AgentConfig) => {
+  agentManager.registerAgent(config); // re-registering overwrites
   return { success: true };
 });
 
 // ── App Identity ──────────────────────────────────────────────
-// Must be set BEFORE app.whenReady() for taskbar pinning
+
 app.setAppUserModelId('com.mqttick.workflow-dashboard');
 
 // ── App Lifecycle ─────────────────────────────────────────────
@@ -528,15 +352,15 @@ app.setAppUserModelId('com.mqttick.workflow-dashboard');
 app.whenReady().then(() => {
   createWindow();
   createTray();
-  // Start bridge automatically
-  startBridge();
+
+  // 通知 UI 核心服务已就绪
+  mainWindow?.webContents.send('core-ready', {
+    claudeAvailable: agentManager.checkAllAvailability(),
+  });
 });
 
 app.on('window-all-closed', () => {
-  // Don't quit — tray keeps app alive
-  if (process.platform !== 'darwin') {
-    // On Windows, tray keeps running even with no windows
-  }
+  // Tray keeps alive on Windows
 });
 
 app.on('activate', () => {
@@ -550,7 +374,7 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
-  stopBridge();
+  workflowEngine.cancel();
   if (tray) {
     tray.destroy();
     tray = null;

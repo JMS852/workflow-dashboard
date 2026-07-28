@@ -1,75 +1,69 @@
-const { contextBridge, ipcRenderer } = require('electron');
+import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  // File operations
+  // ── File operations ───────────────────────────────────────
+
   selectProject: () => ipcRenderer.invoke('select-project'),
   openProject: (dir: string) => ipcRenderer.invoke('open-project', dir),
-  readFile: (path: string) => ipcRenderer.invoke('read-file', path),
-  writeFile: (path: string, content: string) => ipcRenderer.invoke('write-file', path, content),
-  appendToFile: (path: string, text: string) => ipcRenderer.invoke('append-to-file', path, text),
-  getFileInfo: (path: string) => ipcRenderer.invoke('get-file-info', path),
-  openFileExternally: (path: string) => ipcRenderer.invoke('open-file-externally', path),
+  readFile: (fPath: string) => ipcRenderer.invoke('read-file', fPath),
+  writeFile: (fPath: string, content: string) => ipcRenderer.invoke('write-file', fPath, content),
+  appendToFile: (fPath: string, text: string) => ipcRenderer.invoke('append-to-file', fPath, text),
+  getFileInfo: (fPath: string) => ipcRenderer.invoke('get-file-info', fPath),
+  openFileExternally: (fPath: string) => ipcRenderer.invoke('open-file-externally', fPath),
   detectFileType: (name: string) => ipcRenderer.invoke('detect-file-type', name),
 
   // File watcher events
-  onFileAdded: (callback: (data: any) => void) => {
-    ipcRenderer.on('file-added', (_event: IpcRendererEvent, data: any) => callback(data));
+  onFileAdded: (cb: (data: any) => void) => {
+    ipcRenderer.on('file-added', (_e: IpcRendererEvent, d: any) => cb(d));
   },
-  onFileChanged: (callback: (data: any) => void) => {
-    ipcRenderer.on('file-changed', (_event: IpcRendererEvent, data: any) => callback(data));
+  onFileChanged: (cb: (data: any) => void) => {
+    ipcRenderer.on('file-changed', (_e: IpcRendererEvent, d: any) => cb(d));
   },
-  onFileRemoved: (callback: (data: any) => void) => {
-    ipcRenderer.on('file-removed', (_event: IpcRendererEvent, data: any) => callback(data));
+  onFileRemoved: (cb: (data: any) => void) => {
+    ipcRenderer.on('file-removed', (_e: IpcRendererEvent, d: any) => cb(d));
   },
 
-  // MQTT Bridge
-  bridgeStartMqtt: (config: object) => ipcRenderer.invoke('bridge-start-mqtt', config),
-  bridgeStopMqtt: () => ipcRenderer.invoke('bridge-stop-mqtt'),
-  bridgeExecuteTask: (taskData: object) => ipcRenderer.invoke('bridge-execute-task', taskData),
-  bridgePublishMqtt: (data: object) => ipcRenderer.invoke('bridge-publish-mqtt', data),
-  bridgeConfigureProvider: (data: object) => ipcRenderer.invoke('bridge-configure-provider', data),
-  bridgeResumeTask: (taskId: string) => ipcRenderer.invoke('bridge-resume-task', { task_id: taskId }),
-  bridgeListCheckpoints: () => ipcRenderer.invoke('bridge-list-checkpoints'),
-  bridgeDeleteCheckpoint: (taskId: string) => ipcRenderer.invoke('bridge-delete-checkpoint', { task_id: taskId }),
+  // ── Workflow ──────────────────────────────────────────────
 
-  // Bridge events
-  onBridgeReady: (callback: (data: any) => void) => {
-    ipcRenderer.on('bridge-ready', (_event: IpcRendererEvent, data: any) => callback(data));
+  workflowSubmitTask: (task: string) => ipcRenderer.invoke('workflow-submit-task', task),
+  workflowCancel: () => ipcRenderer.invoke('workflow-cancel'),
+  workflowGetStatus: () => ipcRenderer.invoke('workflow-get-status'),
+
+  // Workflow events
+  onWorkflowStateChange: (cb: (data: any) => void) => {
+    ipcRenderer.on('workflow-state-change', (_e: IpcRendererEvent, d: any) => cb(d));
   },
-  onBridgeError: (callback: (data: any) => void) => {
-    ipcRenderer.on('bridge-error', (_event: IpcRendererEvent, data: any) => callback(data));
+  onWorkflowAgentStatus: (cb: (data: any) => void) => {
+    ipcRenderer.on('workflow-agent-status', (_e: IpcRendererEvent, d: any) => cb(d));
   },
-  onMqttStatus: (callback: (data: any) => void) => {
-    ipcRenderer.on('mqtt-status', (_event: IpcRendererEvent, data: any) => callback(data));
+  onWorkflowConclusionTable: (cb: (data: any) => void) => {
+    ipcRenderer.on('workflow-conclusion-table', (_e: IpcRendererEvent, d: any) => cb(d));
   },
-  onMqttTask: (callback: (data: any) => void) => {
-    ipcRenderer.on('mqtt-task', (_event: IpcRendererEvent, data: any) => callback(data));
+  onWorkflowDebateResult: (cb: (data: any) => void) => {
+    ipcRenderer.on('workflow-debate-result', (_e: IpcRendererEvent, d: any) => cb(d));
   },
-  onTaskFileCreated: (callback: (data: any) => void) => {
-    ipcRenderer.on('task-file-created', (_event: IpcRendererEvent, data: any) => callback(data));
+  onWorkflowFinalDecision: (cb: (data: any) => void) => {
+    ipcRenderer.on('workflow-final-decision', (_e: IpcRendererEvent, d: any) => cb(d));
   },
-  onTaskExecutionStarted: (callback: (data: any) => void) => {
-    ipcRenderer.on('task-execution-started', (_event: IpcRendererEvent, data: any) => callback(data));
+  onWorkflowError: (cb: (data: any) => void) => {
+    ipcRenderer.on('workflow-error', (_e: IpcRendererEvent, d: any) => cb(d));
   },
-  onTaskExecuted: (callback: (data: any) => void) => {
-    ipcRenderer.on('task-executed', (_event: IpcRendererEvent, data: any) => callback(data));
+
+  // ── Agent ─────────────────────────────────────────────────
+
+  agentRegister: (config: object) => ipcRenderer.invoke('agent-register', config),
+  agentUnregister: (agentId: string) => ipcRenderer.invoke('agent-unregister', agentId),
+  agentList: () => ipcRenderer.invoke('agent-list'),
+  agentCheckAvailability: () => ipcRenderer.invoke('agent-check-availability'),
+  agentUpdateConfig: (config: object) => ipcRenderer.invoke('agent-update-config', config),
+
+  // Core events
+  onCoreReady: (cb: (data: any) => void) => {
+    ipcRenderer.on('core-ready', (_e: IpcRendererEvent, d: any) => cb(d));
   },
-  onTaskExecutionError: (callback: (data: any) => void) => {
-    ipcRenderer.on('task-execution-error', (_event: IpcRendererEvent, data: any) => callback(data));
-  },
-  onTaskProgress: (callback: (data: any) => void) => {
-    ipcRenderer.on('task_progress', (_event: IpcRendererEvent, data: any) => callback(data));
-  },
-  onCheckpointSaved: (callback: (data: any) => void) => {
-    ipcRenderer.on('checkpoint_saved', (_event: IpcRendererEvent, data: any) => callback(data));
-  },
-  onCheckpointResumed: (callback: (data: any) => void) => {
-    ipcRenderer.on('checkpoint_resumed', (_event: IpcRendererEvent, data: any) => callback(data));
-  },
-  onCheckpointsList: (callback: (data: any) => void) => {
-    ipcRenderer.on('checkpoints_list', (_event: IpcRendererEvent, data: any) => callback(data));
-  },
+
+  // ── Cleanup ───────────────────────────────────────────────
 
   removeAllListeners: () => {
     const channels = ipcRenderer.eventNames();

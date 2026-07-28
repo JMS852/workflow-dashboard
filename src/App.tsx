@@ -1,15 +1,11 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import type { ProjectInfo, FileEntry, FileType, Notification, TaskFlowItem } from './types';
+import type { ProjectInfo, FileEntry, FileType, Notification } from './types';
 import FileTree from './components/FileTree';
 import ContentViewer from './components/ContentViewer';
-import DecisionPanel from './components/DecisionPanel';
 import NotificationBar from './components/NotificationBar';
-import TaskFlow from './components/TaskFlow';
-import MqttPanel from './components/MqttPanel';
-import ProviderSettings from './components/ProviderSettings';
-import { FileText, FolderOpen, RefreshCw, Zap, Radio, Key } from 'lucide-react';
-
-type RightPanelTab = 'decision' | 'mqtt' | 'provider';
+import AgentPanel from './components/AgentPanel';
+import WorkflowView from './components/WorkflowView';
+import { FileText, FolderOpen, RefreshCw, Zap } from 'lucide-react';
 
 export default function App() {
   const [project, setProject] = useState<ProjectInfo | null>(null);
@@ -19,38 +15,33 @@ export default function App() {
   const [fileType, setFileType] = useState<FileType>('generic');
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
-  const [userInput, setUserInput] = useState('');
-  const [decisionFeedback, setDecisionFeedback] = useState<string | null>(null);
-  const [rightPanel, setRightPanel] = useState<RightPanelTab>('decision');
+  const [showFilePanel, setShowFilePanel] = useState(false);
   const notifIdRef = useRef(0);
   const selectedFileRef = useRef<FileEntry | null>(null);
-  // Keep ref in sync so file-watcher callbacks always see latest selection
   selectedFileRef.current = selectedFile;
 
   const addNotification = useCallback((type: Notification['type'], fileName: string) => {
     const id = ++notifIdRef.current;
-    const n: Notification = {
-      id,
-      type,
-      fileName,
-      time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      read: false,
-    };
-    setNotifications(prev => [n, ...prev].slice(0, 30));
+    setNotifications((prev) => [
+      { id, type, fileName, time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }), read: false },
+      ...prev,
+    ].slice(0, 30));
   }, []);
 
   const refreshFiles = useCallback(async (dir: string) => {
-    if (!window.electronAPI) return;
-    const result = await window.electronAPI.openProject(dir);
+    const api = window.electronAPI;
+    if (!api) return;
+    const result = await api.openProject(dir);
     if ('error' in result) return;
     setFiles(result.files);
     setProject(result);
   }, []);
 
   const selectProject = useCallback(async () => {
-    if (!window.electronAPI) return;
+    const api = window.electronAPI;
+    if (!api) return;
     setLoading(true);
-    const result = await window.electronAPI.selectProject();
+    const result = await api.selectProject();
     if (result) {
       setProject(result);
       setFiles(result.files);
@@ -61,140 +52,100 @@ export default function App() {
   }, []);
 
   const selectFile = useCallback(async (file: FileEntry) => {
-    if (!window.electronAPI) return;
+    const api = window.electronAPI;
+    if (!api) return;
     setSelectedFile(file);
-    const result = await window.electronAPI.readFile(file.path);
+    const result = await api.readFile(file.path);
     if (result.content !== undefined) {
       setFileContent(result.content);
     } else {
       setFileContent(`⚠️ 读取失败: ${result.error}`);
     }
-    const type = await window.electronAPI.detectFileType(file.name);
+    const type = await api.detectFileType(file.name);
     setFileType(type);
-    setDecisionFeedback(null);
   }, []);
 
-  const handleDecision = useCallback(async (action: string, reason: string) => {
-    if (!selectedFile || !window.electronAPI) return;
-
-    const block = `\n\n---\n\n【用户补充意见】\n- 我的决定：${action}\n- 我的理由：${reason || '无'}\n- 时间：${new Date().toLocaleString('zh-CN')}\n`;
-
-    const result = await window.electronAPI.appendToFile(selectedFile.path, block);
-    if (result.success) {
-      setDecisionFeedback(`✅ 已写入: ${action}`);
-      setTimeout(() => setDecisionFeedback(null), 3000);
-      const updated = await window.electronAPI.readFile(selectedFile.path);
-      if (updated.content !== undefined) {
-        setFileContent(updated.content);
-      }
-    } else {
-      setDecisionFeedback(`❌ 写入失败: ${result.error}`);
-    }
-  }, [selectedFile]);
-
-  const handleAppendNote = useCallback(async () => {
-    if (!selectedFile || !userInput.trim() || !window.electronAPI) return;
-    const block = `\n\n---\n\n【用户批注】\n${userInput.trim()}\n- 时间：${new Date().toLocaleString('zh-CN')}\n`;
-    const result = await window.electronAPI.appendToFile(selectedFile.path, block);
-    if (result.success) {
-      setUserInput('');
-      setDecisionFeedback('✅ 批注已写入');
-      setTimeout(() => setDecisionFeedback(null), 3000);
-      const updated = await window.electronAPI.readFile(selectedFile.path);
-      if (updated.content !== undefined) {
-        setFileContent(updated.content);
-      }
-    }
-  }, [selectedFile, userInput]);
-
-  // Setup file watcher listeners — only re-run when project changes
+  // Setup file watcher listeners
   useEffect(() => {
-    if (!window.electronAPI) return;
+    const api = window.electronAPI;
+    if (!api) return;
 
-    window.electronAPI.onFileAdded((data) => {
+    api.onFileAdded((data) => {
       addNotification('added', data.name);
       if (project) refreshFiles(project.projectDir);
     });
 
-    window.electronAPI.onFileChanged((data) => {
+    api.onFileChanged((data) => {
       addNotification('changed', data.name);
       if (project) refreshFiles(project.projectDir);
       const current = selectedFileRef.current;
       if (current && data.path === current.path) {
-        window.electronAPI?.readFile(data.path).then((result) => {
+        api.readFile(data.path).then((result) => {
           if (result.content !== undefined) setFileContent(result.content);
         });
       }
     });
 
-    window.electronAPI.onFileRemoved((data) => {
+    api.onFileRemoved((data) => {
       addNotification('removed', data.name);
       if (project) refreshFiles(project.projectDir);
     });
 
     return () => {
-      window.electronAPI?.removeAllListeners();
+      api.removeAllListeners();
     };
-  }, [project]);
+  }, [project, refreshFiles, addNotification]);
 
-  // Listen for MQTT task and execution events to show notifications
+  // Listen for workflow events → notifications
   useEffect(() => {
-    if (!window.electronAPI) return;
-    window.electronAPI.onMqttTask((data) => {
-      addNotification('mqtt_task', data.title);
+    const api = window.electronAPI;
+    if (!api) return;
+
+    api.onWorkflowStateChange((data) => {
+      addNotification('workflow', `状态: ${data.state}`);
     });
-    window.electronAPI.onTaskExecuted((data) => {
-      addNotification('task_executed', data.task_id);
-    });
-    window.electronAPI.onMqttStatus((data) => {
-      if (data.status === 'connected' || data.status === 'disconnected') {
-        addNotification('bridge_status', data.status);
-      }
+
+    api.onWorkflowError((data) => {
+      addNotification('agent', `错误: ${data.error}`);
     });
   }, [addNotification]);
 
   const dismissNotification = useCallback((id: number) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
   }, []);
-
-  const getStageLabel = () => {
-    if (!project) return '';
-    try {
-      const match = fileContent.match(/当前阶段[：:]\s*(.+)/);
-      return match ? match[1].trim() : '';
-    } catch { return ''; }
-  };
-
-  const stageLabel = getStageLabel();
-
-  // When auto-starting via welcome screen, also use current project dir
-  const openProjectDir = useCallback(async () => {
-    await selectProject();
-  }, [selectProject]);
 
   return (
     <div className="app">
       {/* Header */}
       <header className="app-header">
         <div className="header-left">
-          <h1 className="app-title">Workflow Dashboard</h1>
+          <h1 className="app-title">
+            <Zap size={18} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+            Workflow Dashboard
+          </h1>
           {project && (
             <span className="project-badge">
               <FolderOpen size={14} />
               {project.projectName}
             </span>
           )}
-          {project && stageLabel && (
-            <span className="stage-badge">{stageLabel}</span>
-          )}
         </div>
         <div className="header-right">
           {project && (
-            <button className="btn btn-ghost" onClick={() => refreshFiles(project.projectDir)} title="刷新">
-              <RefreshCw size={16} />
-            </button>
+            <>
+              <button
+                className={`btn btn-ghost ${showFilePanel ? 'active' : ''}`}
+                onClick={() => setShowFilePanel(!showFilePanel)}
+                title="文件面板"
+              >
+                <FileText size={16} />
+              </button>
+              <button className="btn btn-ghost" onClick={() => refreshFiles(project.projectDir)} title="刷新">
+                <RefreshCw size={16} />
+              </button>
+            </>
           )}
-          <button className="btn btn-primary" onClick={openProjectDir} disabled={loading}>
+          <button className="btn btn-primary" onClick={selectProject} disabled={loading}>
             <FolderOpen size={16} />
             {loading ? '加载中...' : project ? '切换项目' : '打开项目'}
           </button>
@@ -212,11 +163,11 @@ export default function App() {
       {!project && (
         <div className="welcome">
           <div className="welcome-card">
-            <FileText size={48} strokeWidth={1} />
-            <h2>Multi-AI Workflow Dashboard</h2>
-            <p>选择一个包含 <code>.multi-ai-workflow</code> 目录的项目，开始监控和决策。</p>
-            <p className="hint">按 multi-ai-workflow 工作流运行的项目会自动生成工作文件。</p>
-            <button className="btn btn-primary btn-large" onClick={openProjectDir}>
+            <Zap size={48} strokeWidth={1} />
+            <h2>Workflow Dashboard — 信差平台</h2>
+            <p>打开项目目录，注册 Claude Code / Codex Agent，开始多 Agent 协作。</p>
+            <p className="hint">Agents 会各自产出一个简洁结论，然后互相辩论，最终做出决策。</p>
+            <button className="btn btn-primary btn-large" onClick={selectProject}>
               <FolderOpen size={20} />
               选择项目目录
             </button>
@@ -226,13 +177,9 @@ export default function App() {
 
       {/* Main content */}
       {project && (
-        <>
-          {/* Task Flow section (above the main 3-column layout) */}
-          <div className="task-flow-section">
-            <TaskFlow onSelectTask={() => {}} />
-          </div>
-
-          <div className="main-content">
+        <div className="main-content">
+          {/* File panel (togglable) */}
+          {showFilePanel && (
             <aside className="sidebar">
               <FileTree
                 files={files}
@@ -241,111 +188,30 @@ export default function App() {
                 projectDir={project.projectDir}
               />
             </aside>
+          )}
 
-            <main className="viewer">
-              {selectedFile ? (
-                <>
-                  <div className="viewer-header">
-                    <span className="viewer-filename">{selectedFile.name}</span>
-                    <span className="viewer-meta">
-                      {new Date(selectedFile.mtime).toLocaleString('zh-CN')}
-                    </span>
-                  </div>
-                  <ContentViewer content={fileContent} />
-                </>
-              ) : (
-                <div className="viewer-empty">
-                  <FileText size={40} strokeWidth={1} />
-                  <p>从左侧选择一个文件查看</p>
+          {/* Center: Workflow or File viewer */}
+          <main className="center-panel">
+            {selectedFile ? (
+              <>
+                <div className="viewer-header">
+                  <span className="viewer-filename">{selectedFile.name}</span>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setSelectedFile(null)}>
+                    关闭
+                  </button>
                 </div>
-              )}
-            </main>
+                <ContentViewer content={fileContent} />
+              </>
+            ) : (
+              <WorkflowView />
+            )}
+          </main>
 
-            <aside className="right-panel">
-              {/* Tab switcher */}
-              <div className="panel-tabs">
-                <button
-                  className={`panel-tab ${rightPanel === 'decision' ? 'active' : ''}`}
-                  onClick={() => setRightPanel('decision')}
-                >
-                  🎯 决策
-                </button>
-                <button
-                  className={`panel-tab ${rightPanel === 'mqtt' ? 'active' : ''}`}
-                  onClick={() => setRightPanel('mqtt')}
-                >
-                  <Radio size={14} /> MQTT
-                </button>
-                <button
-                  className={`panel-tab ${rightPanel === 'provider' ? 'active' : ''}`}
-                  onClick={() => setRightPanel('provider')}
-                >
-                  <Key size={14} /> AI
-                </button>
-              </div>
-
-              {rightPanel === 'decision' && (
-                <div className="decision-panel">
-                  {selectedFile ? (
-                    <>
-                      <DecisionPanel
-                        key={selectedFile.path}
-                        fileType={fileType}
-                        fileName={selectedFile.name}
-                        onDecision={handleDecision}
-                        feedback={decisionFeedback}
-                      />
-                      <div className="user-note">
-                        <h4>📝 我的批注</h4>
-                        <textarea
-                          value={userInput}
-                          onChange={(e) => setUserInput(e.target.value)}
-                          placeholder="写下你的批注或指令，将追加到文件末尾..."
-                          rows={4}
-                        />
-                        <button
-                          className="btn btn-primary"
-                          onClick={handleAppendNote}
-                          disabled={!userInput.trim()}
-                          style={{ marginTop: 8, width: '100%' }}
-                        >
-                          写入批注
-                        </button>
-                      </div>
-                      <div className="panel-footer">
-                        <button
-                          className="btn btn-ghost"
-                          onClick={() => selectedFile && window.electronAPI?.openFileExternally(selectedFile.path)}
-                          style={{ width: '100%', marginTop: 8 }}
-                        >
-                          在外部编辑器打开
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="panel-empty">
-                      <p>选择文件后可做决策</p>
-                    </div>
-                  )}
-                </div>
-              )}
-              {rightPanel === 'mqtt' && (
-                <div className="mqtt-panel-wrapper">
-                  <MqttPanel
-                    onManualTask={(title, desc) => {
-                      addNotification('mqtt_task', title);
-                    }}
-                  />
-                </div>
-              )}
-              {rightPanel === 'provider' && (
-                <div className="mqtt-panel-wrapper">
-                  <ProviderSettings />
-                </div>
-              )}
-            </aside>
-          </div>
-        </>
+          {/* Right: Agent Panel */}
+          <aside className="right-sidebar">
+            <AgentPanel />
+          </aside>
+        </div>
       )}
     </div>
   );

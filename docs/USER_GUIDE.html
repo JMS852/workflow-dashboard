@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Workflow Dashboard — 使用说明书 v2.0</title>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #161822; --border: #2a2d3e;
+    --text: #e1e4ed; --muted: #8b8fa3; --accent: #6366f1;
+    --green: #10b981; --amber: #f59e0b; --red: #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.8; padding: 0; font-size: 15px;
+  }
+  .container { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
+  h1 { font-size: 2em; margin-bottom: 8px; border-bottom: 2px solid var(--accent); padding-bottom: 12px; }
+  h2 { font-size: 1.4em; margin: 40px 0 12px; padding: 8px 16px; background: var(--surface); border-left: 4px solid var(--accent); border-radius: 0 8px 8px 0; }
+  h3 { font-size: 1.15em; margin: 24px 0 8px; color: var(--accent); }
+  h4 { font-size: 1em; margin: 16px 0 6px; }
+  p { margin: 8px 0; }
+  ul, ol { padding-left: 24px; margin: 8px 0; }
+  li { margin: 4px 0; }
+  code { padding: 2px 6px; background: var(--surface); border-radius: 4px; font-family: 'Consolas', 'Fira Code', monospace; font-size: 0.9em; color: #818cf8; }
+  pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; overflow-x: auto; font-family: 'Consolas', 'Fira Code', monospace; font-size: 0.85em; margin: 12px 0; }
+  pre code { background: none; padding: 0; color: var(--text); }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+  th, td { padding: 10px 14px; border: 1px solid var(--border); text-align: left; font-size: 0.95em; }
+  th { background: var(--surface); font-weight: 600; }
+  .note { background: rgba(99, 102, 241, 0.08); border-left: 3px solid var(--accent); padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
+  .warn { background: rgba(245, 158, 11, 0.08); border-left: 3px solid var(--amber); padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
+  .err { background: rgba(239, 68, 68, 0.08); border-left: 3px solid var(--red); padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
+  .step { display: flex; gap: 12px; margin: 16px 0; }
+  .step-num { width: 32px; height: 32px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.9em; flex-shrink: 0; }
+  .step-body { flex: 1; }
+  .toc { background: var(--surface); border-radius: 8px; padding: 20px 24px; margin: 20px 0; }
+  .toc a { color: var(--text); text-decoration: none; }
+  .toc a:hover { color: var(--accent); }
+  .toc ul, .toc ol { margin: 4px 0; }
+  strong { color: #fff; }
+  details { margin: 8px 0; }
+  summary { cursor: pointer; color: var(--muted); font-size: 0.9em; }
+  summary:hover { color: var(--text); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>📡 Workflow Dashboard — 使用说明书 v2.0</h1>
+<p style="color: var(--muted); font-size: 1.1em;">多 Agent 协作信差平台 — 以 Claude Code / Codex 为 Agent 驱动复杂工程任务</p>
+
+<div class="toc">
+  <strong>📑 目录</strong>
+  <ol>
+    <li><a href="#what">这是什么？核心概念</a></li>
+    <li><a href="#install">安装与启动（含故障排除）</a></li>
+    <li><a href="#first-run">首次使用：从零到跑通</a></li>
+    <li><a href="#agents">管理 Agent（注册、配置、角色设计）</a></li>
+    <li><a href="#workflow">工作流详解：三轮事件驱动</a></li>
+    <li><a href="#protocol">Agent 协议：结论格式与 Token 节省</a></li>
+    <li><a href="#sessions">Session 持久化与跨轮次上下文</a></li>
+    <li><a href="#use-cases">使用场景（含 Agent 配置建议）</a></li>
+    <li><a href="#faq">常见问题与排查（20+ 问答）</a></li>
+    <li><a href="#advanced">高级配置</a></li>
+  </ol>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2 id="what">1. 核心概念</h2>
+
+<h3>Dashboard 是什么？</h3>
+<p>Workflow Dashboard 是一个<strong>信差平台</strong>。它<strong>不产生 AI 内容</strong>——只负责在<strong>用户</strong>和<strong>多个 Claude Code / Codex Agent</strong> 之间传递消息、汇聚结论并推动辩论和决策。</p>
+
+<h3>与传统 AI 工具的根本区别</h3>
+<table>
+  <tr><th></th><th>传统 AI 工具（ChatGPT 等）</th><th>Workflow Dashboard</th></tr>
+  <tr><td>AI 来源</td><td>单一 API 调用</td><td>多个独立 Claude Code / Codex CLI 实例</td></tr>
+  <tr><td>工作方式</td><td>一问一答</td><td>多 Agent 并行产出 → 互审辩论 → 投票决策</td></tr>
+  <tr><td>Dashboard 角色</td><td>AI 执行者（自己调 API）</td><td>信差——传递消息、汇聚结论</td></tr>
+  <tr><td>适用任务</td><td>简单对话</td><td>复杂工程：算法、数学、架构、嵌入式</td></tr>
+  <tr><td>Token 效率</td><td>N/A</td><td>Agent 间只交换结论 ~200 字，节省 25×+</td></tr>
+  <tr><td>上下文</td><td>单次对话</td><td>每 Agent 保持独立完整上下文，跨轮次记忆</td></tr>
+</table>
+
+<h3>三段式工作流</h3>
+<pre>
+Round 1 产出  → 用户提任务 → 所有 Agent 并行产出方案 + 200 字结论
+Round 2 辩论  → Dashboard 汇聚结论对比表 → Agent 互相评判、改进
+Round 3 决策  → Agent 投票 → Dashboard 展示最终决策
+</pre>
+
+<div class="note">
+<strong>📌 三条设计原则：</strong><br>
+1. Dashboard <strong>不产生 AI 内容</strong> — 只做消息传递和展示<br>
+2. 每个 Agent <strong>在自己的 Session 里完整工作</strong> — 有上下文、有记忆<br>
+3. Agent 间 <strong>只交换结论</strong>（~200 字），不互读完整产出 — 大量节省 Token
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2 id="install">2. 安装与启动</h2>
+
+<h3>2.1 系统要求</h3>
+<table>
+  <tr><td>操作系统</td><td>Windows 11 / Windows 10（macOS / Linux 理论兼容）</td></tr>
+  <tr><td>Node.js</td><td>18+（推荐 20 LTS）</td></tr>
+  <tr><td>Python</td><td>3.12（仅可选 Sandbox 功能需要）</td></tr>
+  <tr><td>磁盘</td><td>~500 MB（含 Node 依赖）</td></tr>
+  <tr><td>网络</td><td>Agent 运行时需 Claude API / OpenAI API 连接</td></tr>
+</table>
+
+<h3>2.2 安装 CLI 工具（至少一种）</h3>
+
+<h4>Claude Code CLI</h4>
+<pre><code># 方式一：npm 全局安装
+npm install -g @anthropic-ai/claude-code
+
+# 方式二：winget (Windows)
+winget install Anthropic.ClaudeCode
+
+# 验证
+claude --version    # 应显示 2.x.x (Claude Code)
+
+# 认证（二选一）
+claude login        # 交互式登录
+# 或
+set ANTHROPIC_API_KEY=sk-ant-...    # 环境变量方式</code></pre>
+
+<h4>Codex CLI（OpenAI）</h4>
+<pre><code># 方式一：npm 全局安装
+npm install -g @openai/codex
+
+# 方式二：桌面应用安装（附带 CLI）
+# 下载：https://github.com/openai/codex/releases/latest
+
+# 验证
+codex --version    # 应显示 codex-cli 0.x.x
+
+# 认证
+set OPENAI_API_KEY=sk-...</code></pre>
+
+<p><strong>只装一种可以用吗？</strong> 可以。建议至少装 1 种。推荐 Claude Code（对代码/数学任务表现更优）。</p>
+
+<h3>2.3 安装 Dashboard</h3>
+<pre><code>git clone https://github.com/JMS852/workflow-dashboard.git
+cd workflow-dashboard
+npm install</code></pre>
+
+<h3>2.4 启动</h3>
+<pre><code>node launcher.js</code></pre>
+
+<p>启动后自动：编译 Electron TS → 构建 React 前端 → 检测 CLI → 打开窗口。<br>
+关闭窗口 = 缩到系统托盘。托盘图标右键可退出。</p>
+
+<h3>2.5 启动故障速查</h3>
+<details open><summary><strong>Cannot find module 'electron'</strong></summary>
+<div class="err"><p><code>npm install</code> 未完成。清理重装：<code>rm -rf node_modules && npm install</code></p></div>
+</details>
+<details open><summary><strong>窗口一闪而过</strong></summary>
+<div class="err"><p>TypeScript 编译失败。手动检查：<code>npx tsc -p tsconfig.electron.json</code></p></div>
+</details>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2 id="first-run">3. 首次使用</h2>
+
+<div class="step"><div class="step-num">1</div><div class="step-body">
+  <strong>打开项目目录</strong>
+  <p>点击「选择项目目录」。Dashboard 在目录下创建 <code>.multi-ai-workflow/</code> 存放工作记录。</p>
+</div></div>
+
+<div class="step"><div class="step-num">2</div><div class="step-body">
+  <strong>添加 Agent</strong>
+  <p>右侧 Agent 面板点 <code>+</code>，填写：</p>
+  <table>
+    <tr><td><strong>ID</strong></td><td>唯一标识，如 <code>cc-arch</code></td></tr>
+    <tr><td><strong>类型</strong></td><td>选择 Claude Code 或 Codex</td></tr>
+    <tr><td><strong>显示名</strong></td><td>如 <code>Claude #1（系统架构师）</code> — 这影响 Agent 回答风格</td></tr>
+    <tr><td><strong>工作目录</strong></td><td>Agent 执行代码的目录</td></tr>
+  </table>
+  <p>点「注册」。绿色 ON 标签 = 已启用。</p>
+</div></div>
+
+<div class="step"><div class="step-num">3</div><div class="step-body">
+  <strong>提交任务</strong>
+  <p>在输入框输入任务，<code>Enter</code> 发送（<code>Shift+Enter</code> 换行）</p>
+</div></div>
+
+<div class="step"><div class="step-num">4</div><div class="step-body">
+  <strong>观察流程</strong>
+  <p>状态栏自动显示 Round 1 → 2 → 3 → 完成。切换到「结论对比」和「辩论&决策」标签查看结果。</p>
+</div></div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2 id="agents">4. 管理 Agent</h2>
+
+<h3>4.1 状态指示</h3>
+<table>
+  <tr><th>图标</th><th>状态</th><th>含义</th></tr>
+  <tr><td style="color:var(--muted)">●</td><td>idle</td><td>空闲中</td></tr>
+  <tr><td style="color:var(--amber)">◉</td><td>working</td><td>正在执行（脉冲动画）</td></tr>
+  <tr><td style="color:var(--green)">✓</td><td>done</td><td>本轮完成</td></tr>
+  <tr><td style="color:var(--red)">✗</td><td>error</td><td>出错（CLI 崩溃/超时/异常）</td></tr>
+  <tr><td>⚠</td><td>不可用</td><td>CLI 未找到或路径错误</td></tr>
+</table>
+
+<h3>4.2 推荐 Agent 配置</h3>
+<table>
+  <tr><th>ID</th><th>类型</th><th>显示名</th><th>适合场景</th></tr>
+  <tr><td>cc-arch</td><td>Claude Code</td><td>Claude #1（系统架构师）</td><td>架构设计、模块划分</td></tr>
+  <tr><td>cc-algo</td><td>Claude Code</td><td>Claude #2（算法专家）</td><td>算法、数学建模</td></tr>
+  <tr><td>cc-code</td><td>Claude Code</td><td>Claude #3（代码实现）</td><td>代码生成、测试</td></tr>
+  <tr><td>cdx-review</td><td>Codex</td><td>Codex（代码审查员）</td><td>代码审查、安全审计</td></tr>
+</table>
+
+<div class="note"><strong>💡 最少 3 个 Agent</strong>才能形成有效对抗验证。2 个输出 + 1 个审查者是最低配置。</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2 id="workflow">5. 工作流详解</h2>
+
+<h3>5.1 完整数据流</h3>
+<pre>
+用户任务
+  ├─→ Agent A (--session-id UUID-a) ─→ [完整产出] ─→ extract 结论A
+  ├─→ Agent B (--session-id UUID-b) ─→ [完整产出] ─→ extract 结论B
+  └─→ Agent C (--session-id UUID-c) ─→ [完整产出] ─→ extract 结论C
+      │
+      ▼ 所有结论到齐 → 自动触发 Round 2
+      │
+ 结论对比表: | A | 结论A | | B | 结论B | | C | 结论C |
+      │
+  ├─→ Agent A (--resume UUID-a) → 读结论表 → 评判各方 → 新结论A'
+  ├─→ Agent B (--resume UUID-b) → 读结论表 → 评判各方 → 新结论B'
+  └─→ Agent C (--resume UUID-c) → 读结论表 → 评判各方 → 新结论C'
+      │
+      ▼ 所有辩论到齐 → 自动触发 Round 3
+      │
+  ├─→ Agent A (--resume UUID-a) → 读辩论汇总 → 投票 → 最终建议
+  ├─→ Agent B (--resume UUID-b) → 读辩论汇总 → 投票 → 最终建议
+  └─→ Agent C (--resume UUID-c) → 读辩论汇总 → 投票 → 最终建议
+      │
+      ▼ 🏆 最终决策展示
+</pre>
+
+<h3>5.2 状态机</h3>
+<table>
+  <tr><th>状态</th><th>触发</th><th>动作</th></tr>
+  <tr><td><code>idle</code></td><td>初始</td><td>等待用户</td></tr>
+  <tr><td><code>round_1_produce</code></td><td>用户提交任务</td><td>并行启动所有 Agent</td></tr>
+  <tr><td><code>round_2_debate</code></td><td>全部 R1 完成</td><td>构建结论表 → 并行辩论</td></tr>
+  <tr><td><code>round_3_decide</code></td><td>全部 R2 完成</td><td>构建辩论汇总 → 并行决策</td></tr>
+  <tr><td><code>complete</code></td><td>全部 R3 完成</td><td>展示最终决策</td></tr>
+</table>
+
+<div class="note">⏱ <strong>每轮自动推进</strong>，无需手动操作。用户可随时「取消」。</div>
+
+<h3>5.3 查看完整产出</h3>
+<p>「对话」标签 → 每个 Agent 消息下有 <code>▶ 查看完整产出</code> 折叠区（最多 5000 字）。完整 session 记录在 <code>.multi-ai-workflow/sessions/{agentId}.json</code>。</p>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2 id="protocol">6. Agent 协议</h2>
+
+<h3>6.1 结论提取</h3>
+<p>Dashboard 在每个 Agent stdout 中查找：</p>
+<pre><code>──結論──
+&lt;结论文本，200 字以内&gt;
+────────</code></pre>
+<p>没有标记时，回退取最后 500 字。</p>
+
+<h3>6.2 自动追加的协议指令</h3>
+<pre><code>## 工作协议
+
+1. 请在你的完整产出末尾，以以下格式给出 200 字以内的结论摘要：
+──結論──
+&lt;核心方案、关键决策、注意事项&gt;
+────────
+
+2. 结论必须简洁——其他 agent 只会阅读你的结论，不会阅读你的完整产出。</code></pre>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2 id="sessions">7. Session 持久化</h2>
+
+<h3>7.1 跨轮次上下文保留机制</h3>
+<table>
+  <tr><th>CLI</th><th>Round 1</th><th>Round 2/3</th><th>存储位置</th></tr>
+  <tr><td>Claude Code</td><td><code>--session-id &lt;UUID&gt;</code></td><td><code>--resume &lt;UUID&gt;</code></td><td>~/.claude/</td></tr>
+  <tr><td>Codex</td><td><code>codex exec</code>（自动生成 ID）</td><td><code>codex exec resume &lt;ID&gt;</code></td><td>~/.codex/</td></tr>
+</table>
+
+<h3>7.2 已验证：上下文确实保留</h3>
+<p>实测结果（双摆模拟测试）：</p>
+<ul>
+  <li>Round 2 中 cc-1 精确引用了自己 Round 1 的三项混沌验证方案</li>
+  <li>Round 2 中 cc-2 精确引用了 cc-1 的拉格朗日推导 + RK45 方案</li>
+  <li>Round 3 中 cc-2 明确说「文件权限问题而非技术失败，代码已就绪可运行」——<strong>它记得 Round 1 被权限卡住</strong></li>
+  <li>Round 3 决策综合了三个轮次所有 Agent 的观点</li>
+</ul>
+
+<div class="warn"><strong>⚠</strong> Claude Code 原生 session 有 ~30 天闲置后可能清理。Dashboard 的 session store（<code>.multi-ai-workflow/sessions/</code>）是永久保存的。</div>
+
+<h3>7.3 崩溃恢复</h3>
+<ol>
+  <li>重启 Dashboard</li>
+  <li>自动读取 <code>.multi-ai-workflow/sessions/</code> 下的 session 元数据</li>
+  <li>恢复每个 Agent 的 nativeSessionId</li>
+  <li>下次调用自动 --resume → 完整上下文恢复</li>
+</ol>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2 id="use-cases">8. 使用场景</h2>
+
+<h3>算法设计</h3>
+<pre><code>设计一个支持 O(log n) 范围查询和更新的数据结构，
+用于股票价格区间最值查询。TypeScript 实现 + 复杂度证明。</code></pre>
+<p>Agent 建议：1 算法专家 + 1 数据结构专家 + 1 代码审查者</p>
+
+<h3>数学建模</h3>
+<pre><code>建立传染病 SIR 模型，模拟疫苗接种率变化下的传播。
+推导微分方程、参数敏感性分析、生成可视化的 Python 脚本。</code></pre>
+<p>Agent 建议：1 数学建模专家 + 1 数值仿真专家 + 1 验证者</p>
+
+<h3>代码审查</h3>
+<pre><code>审查 src/engine/ 目录的 Python 代码，
+找出性能问题、安全隐患、非 Pythonic 写法。</code></pre>
+<p>Agent 建议：2 代码审查者 + 1 安全审查者</p>
+
+<h3>嵌入式 / 电赛</h3>
+<pre><code>STM32 PWM 电机控制：PID 自整定、编码器反馈、串口调试。
+C 语言 + HAL 库。</code></pre>
+<p>Agent 建议：1 嵌入式专家 + 1 控制算法专家 + 1 代码实现者</p>
+
+<h3>系统架构</h3>
+<pre><code>设计 10 万 QPS 实时消息推送系统。
+架构图、技术选型、数据流、容错方案。</code></pre>
+<p>Agent 建议：1 架构师 + 1 网络专家 + 1 可靠性工程师</p>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2 id="faq">9. 常见问题</h2>
+
+<h3>启动</h3>
+<details open><summary><strong>Cannot find module 'electron'</strong></summary>
+<div class="err"><pre><code>rm -rf node_modules package-lock.json
+set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+npm install</code></pre></div>
+</details>
+
+<details open><summary><strong>窗口一闪而过</strong></summary>
+<div class="err"><pre><code>npx tsc -p tsconfig.electron.json   # 查编译错误
+ls dist-electron/main.js            # 检查输出是否存在</code></pre></div>
+</details>
+
+<h3>Agent</h3>
+<details open><summary><strong>Agent 旁出现 ⚠ 图标（CLI 未找到）</strong></summary>
+<div class="warn">
+<p>PATH 中找不到 CLI。解决方法：</p>
+<pre><code># 1. 确认 CLI 已安装
+claude --version
+codex --version
+
+# 2. 若未安装
+npm install -g @anthropic-ai/claude-code
+
+# 3. 或手动指定完整路径
+# Windows 常见路径：
+# Claude: %LOCALAPPDATA%\Microsoft\WinGet\Packages\Anthropic.ClaudeCode_*\claude.exe
+# Codex:  %LOCALAPPDATA%\OpenAI\Codex\bin\{hash}\codex.exe</code></pre>
+</div>
+</details>
+
+<details open><summary><strong>Agent 执行卡住不动</strong></summary>
+<div class="warn">
+<p>可能原因 | 检查方法</p>
+<ul>
+  <li>API 密钥未设 → <code>echo %ANTHROPIC_API_KEY%</code></li>
+  <li>网络问题 → 手动测试 <code>claude -p "hello"</code></li>
+  <li>CLI 进程卡死 → 点「取消」终止</li>
+  <li>超时（5 分钟） → 任务太复杂，拆分或增加超时</li>
+</ul>
+</div>
+</details>
+
+<details open><summary><strong>Agent 返回 exit code 1</strong></summary>
+<div class="err">
+<table>
+  <tr><th>错误信息</th><th>原因</th><th>解决</th></tr>
+  <tr><td>Invalid session ID</td><td>不是有效 UUID</td><td>Dashboard 自动生成，手动测试用 <code>uuidgen</code></td></tr>
+  <tr><td>--resume requires valid session</td><td>Session 不存在</td><td>确保 Round 1 先成功</td></tr>
+  <tr><td>Authentication required</td><td>API 密钥未设</td><td><code>claude login</code> 或设置环境变量</td></tr>
+  <tr><td>Permission denied</td><td>工具调用需批准</td><td>Dashboard 用 <code>--permission-mode bypassPermissions</code></td></tr>
+</table>
+</div>
+</details>
+
+<details open><summary><strong>结论没有被正确提取</strong></summary>
+<div class="warn">
+<p>Agent 输出中没有 <code>──結論──</code> 标记。Dashboard 回退取最后 500 字。协议指令已在 prompt 中，大多数 Agent 会遵守。某些 Agent 偶有遗漏属正常。</p>
+</div>
+</details>
+
+<details open><summary><strong>一个 Agent 拖慢全局</strong></summary>
+<div class="warn">
+<p>流程等待所有 Agent 完成才进入下一轮。解决方法：关闭慢的 Agent（ON→OFF）、点「取消」重试、或用更快的模型（Haiku）。</p>
+</div>
+</details>
+
+<details open><summary><strong>Codex Round 2 恢复失败</strong></summary>
+<div class="warn">
+<p>可能原因：session ID 提取失败（需正则匹配 JSONL 输出）、session 用了 --ephemeral。排查：<code>codex resume --last --include-non-interactive</code></p>
+</div>
+</details>
+
+<details open><summary><strong>Dashboard 崩溃后 Agent 上下文还在吗？</strong></summary>
+<div class="note">
+<p><strong>还在。</strong>重启 Dashboard 后：</p>
+<ol>
+  <li>自动读 <code>.multi-ai-workflow/sessions/</code> 下的文件</li>
+  <li>恢复 nativeSessionId</li>
+  <li>下次调用自动 --resume → 完整上下文恢复</li>
+</ol>
+<p>实测：Dashboard 重启后 Agent 仍然记得之前所有对话。</p>
+</div>
+</details>
+
+<details open><summary><strong>我可以中途加 Agent 吗？</strong></summary>
+<div class="note"><p>可以。但新 Agent 只会参与<strong>下一轮</strong>。它没有前轮的上下文。建议完整的工作流从头开始用所有 Agent。</p></div>
+</details>
+
+<details open><summary><strong>Token 消耗有多省钱？</strong></summary>
+<div class="note">
+<p>实测（3 Agent × 3 轮）：</p>
+<table>
+  <tr><td>传统方式（全文交换）</td><td>~30,000 token 用于"理解别人"</td></tr>
+  <tr><td>结论模式</td><td>~1,200 token</td></tr>
+  <tr><td><strong>节省</strong></td><td><strong>96%（25×）</strong></td></tr>
+</table>
+</div>
+</details>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2 id="advanced">10. 高级配置</h2>
+
+<h3>10.1 环境变量</h3>
+<table>
+  <tr><th>变量</th><th>用途</th></tr>
+  <tr><td><code>ANTHROPIC_API_KEY</code></td><td>Claude API 密钥</td></tr>
+  <tr><td><code>OPENAI_API_KEY</code></td><td>OpenAI API 密钥（Codex）</td></tr>
+  <tr><td><code>CLAUDE_CODE_PATH</code></td><td>手动指定 Claude Code CLI 完整路径</td></tr>
+  <tr><td><code>CODEX_PATH</code></td><td>手动指定 Codex CLI 完整路径</td></tr>
+</table>
+
+<h3>10.2 CLI 自动发现顺序</h3>
+<ol>
+  <li>环境变量 <code>CLAUDE_CODE_PATH</code> / <code>CODEX_PATH</code></li>
+  <li>PATH 中的 <code>claude</code> / <code>codex</code></li>
+  <li><code>%LOCALAPPDATA%\Microsoft\WinGet\Packages\</code>（winget 安装）</li>
+  <li><code>%LOCALAPPDATA%\OpenAI\Codex\bin\</code>（Codex 桌面应用）</li>
+  <li><code>%APPDATA%\npm\</code>（npm 全局安装）</li>
+</ol>
+
+<h3>10.3 自定义模型</h3>
+<p>在 <code>agent-manager.ts</code> 的 <code>buildCliArgs</code> 中添加 <code>--model</code> 参数可为不同 Agent 指定模型容量：</p>
+<pre><code>// 快 Agent（低成本）
+args.push('--model', 'claude-haiku-4-5');
+// 强 Agent（高质量）
+args.push('--model', 'claude-sonnet-4-6');</code></pre>
+
+<h3>10.4 MQTT 外部任务源（可选）</h3>
+<p>保留的 <code>engine/mqtt_client.py</code> 可从外部 MQTT Broker 接收任务发布到 <code>workflow/tasks/#</code>，适用于 CI/CD 集成。</p>
+
+<h3>10.5 Sandbox（可选）</h3>
+<p>保留的 <code>engine/sandbox.py</code> 可在 Docker/子进程中执行 Agent 产出的 Python 代码，验证正确性。</p>
+
+<hr style="margin: 40px 0; border-color: var(--border)">
+<p style="text-align: center; color: var(--muted); font-size: 0.9em">
+  Workflow Dashboard v2.0 — 信差平台<br>
+  MQTT-3388 事件驱动架构 · <a href="https://github.com/JMS852/workflow-dashboard">GitHub</a>
+</p>
+
+</div>
+</body>
+</html>
