@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage } = require('electron');
 import * as path from 'path';
 import * as fs from 'fs';
 import { ChildProcess, spawn } from 'child_process';
@@ -6,6 +6,8 @@ const { watch } = require('chokidar');
 import type { FSWatcher } from 'chokidar';
 
 let mainWindow: typeof BrowserWindow | null = null;
+let tray: typeof Tray | null = null;
+let isQuitting = false;
 let watcher: FSWatcher | null = null;
 let watchDir: string = '';
 let bridgeProcess: ChildProcess | null = null;
@@ -171,6 +173,54 @@ function stopBridge() {
 
 // ── Window ────────────────────────────────────────────────────
 
+function createTray() {
+  const iconPath = path.join(__dirname, '..', 'assets', 'icon.ico');
+  if (!fs.existsSync(iconPath)) return;
+
+  // Create a 16x16 version for tray
+  const trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+
+  tray = new Tray(trayIcon);
+  tray.setToolTip('Workflow Dashboard');
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: '显示/隐藏窗口',
+      click: () => {
+        if (mainWindow) {
+          if (mainWindow.isVisible()) {
+            mainWindow.hide();
+          } else {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        }
+      },
+    },
+    { type: 'separator' },
+    {
+      label: '退出',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+
+  tray.setContextMenu(contextMenu);
+
+  tray.on('double-click', () => {
+    if (mainWindow) {
+      if (mainWindow.isVisible()) {
+        mainWindow.hide();
+      } else {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    }
+  });
+}
+
 function createWindow() {
   const iconPath = path.join(__dirname, '..', 'assets', 'icon.ico');
   mainWindow = new BrowserWindow({
@@ -193,6 +243,14 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
+
+  // Minimize to tray instead of closing
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow?.hide();
+    }
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -450,20 +508,32 @@ app.setAppUserModelId('com.mqttick.workflow-dashboard');
 
 app.whenReady().then(() => {
   createWindow();
+  createTray();
   // Start bridge automatically
   startBridge();
 });
 
 app.on('window-all-closed', () => {
-  stopBridge();
-  if (watcher) watcher.close();
-  if (process.platform !== 'darwin') app.quit();
+  // Don't quit — tray keeps app alive
+  if (process.platform !== 'darwin') {
+    // On Windows, tray keeps running even with no windows
+  }
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  if (mainWindow) {
+    mainWindow.show();
+    mainWindow.focus();
+  } else {
+    createWindow();
+  }
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
   stopBridge();
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
 });
