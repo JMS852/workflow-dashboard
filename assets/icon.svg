@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e0f7ff"/>
+      <stop offset="15%" stop-color="#00e5ff"/>
+      <stop offset="100%" stop-color="#00a0c8"/>
+    </linearGradient>
+  </defs>
+  <!-- BG -->
+  <rect width="512" height="512" rx="56" fill="#080810"/>
+  <!-- Hex frame -->
+  <polygon points="256,42 470,151 470,361 256,470 42,361 42,151"
+           fill="none" stroke="#00e5ff" stroke-width="10"/>
+  <polygon points="256,86 426,172 426,340 256,426 86,340 86,172"
+           fill="none" stroke="#008cc8" stroke-width="4" opacity="0.3"/>
+  <!-- Corner nodes -->
+  <circle cx="256" cy="42"  r="10" fill="#00c8ff"/>
+  <circle cx="470" cy="151" r="10" fill="#00c8ff"/>
+  <circle cx="470" cy="361" r="10" fill="#00c8ff"/>
+  <circle cx="256" cy="470" r="10" fill="#00c8ff"/>
+  <circle cx="42"  cy="361" r="10" fill="#00c8ff"/>
+  <circle cx="42"  cy="151" r="10" fill="#00c8ff"/>
+  <!-- Signal bars -->
+  <rect x="186" y="286" width="44" height="92" rx="18" fill="url(#barGrad)"/>
+  <rect x="186" y="286" width="44" height="8"  fill="#e0f7ff"/>
+  <rect x="234" y="224" width="44" height="154" rx="18" fill="url(#barGrad)"/>
+  <rect x="234" y="224" width="44" height="8"  fill="#e0f7ff"/>
+  <rect x="282" y="162" width="44" height="216" rx="18" fill="url(#barGrad)"/>
+  <rect x="282" y="162" width="44" height="8"  fill="#e0f7ff"/>
+  <!-- Inter-bar nodes -->
+  <circle cx="212" cy="310" r="8" fill="#00a0c8"/>
+  <circle cx="260" cy="260" r="8" fill="#00a0c8"/>
+  <!-- Tech accent arc -->
+  <path d="M342,130 A80,80 0 0,1 420,208" fill="none" stroke="#00c8ff"
+        stroke-width="5" opacity="0.4"/>
+  <!-- Bottom tech line -->
+  <line x1="170" y1="390" x2="240" y2="390" stroke="#00b4dc"
+        stroke-width="4" opacity="0.3"/>
+  <line x1="240" y1="390" x2="270" y2="360" stroke="#00b4dc"
+        stroke-width="4" opacity="0.2"/>
+</svg>
