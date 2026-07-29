@@ -304,9 +304,9 @@ ipcMain.handle('focus-ai-window', async (_e: IpcMainInvokeEvent, windowId: strin
 });
 
 ipcMain.handle('inject-to-ai-window', async (_e: IpcMainInvokeEvent, windowId: string, message: string) => {
-  const instances = ptyManager.getAllInstances();
-  const target = instances.find((inst) => inst.id === windowId || inst.label === windowId);
-  if (target) { ptyManager.send(target.id, message); }
+  // windowId is AiWindowInfo.id (e.g. "ai-claude-1"); resolve via WindowManager → sessionId → PtyManager
+  const win = windowManager.getWindow(windowId);
+  if (win) { ptyManager.send(win.info.sessionId, message); }
   return { success: true };
 });
 

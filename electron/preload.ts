@@ -65,7 +65,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('pty-data', (_e: IpcRendererEvent, d: any) => cb(d)),
   onPtyInfo: (cb: (data: any) => void) =>
     ipcRenderer.on('pty-info', (_e: IpcRendererEvent, d: any) => cb(d)),
-  sendPtyInput: (data: string) => ipcRenderer.send('pty-input', { data }),
+  sendPtyInput: (windowId: string, data: string) => ipcRenderer.send('pty-input', { windowId, data }),
 
   // ── v3: MQTT task received ────────────────────────────────────
   onMqttTaskReceived: (cb: (data: any) => void) =>

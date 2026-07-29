@@ -64,6 +64,16 @@ export interface ConclusionDetectedEvent {
   round: number;
 }
 
+// ── Round Result (actual data from PTY workflow engine) ──────
+
+export interface RoundResult {
+  instanceId: string;
+  label: string;
+  type: AIToolType;
+  conclusion: string;
+  fullOutput: string;
+}
+
 // ── Agent Result (kept for compatibility) ────────────────────
 
 export interface AgentResult {
@@ -88,14 +98,14 @@ export interface WorkflowStatus {
   state: WorkflowState;
   currentTask: string | null;
   currentRound: number;
-  roundResults: Record<string, AgentResult[]>;
+  roundResults: Record<string, RoundResult[]>;
   error?: string;
 }
 
 export interface ConclusionTableData {
   round: number;
   table: string;
-  results: AgentResult[];
+  results: RoundResult[];
 }
 
 export interface RoundProgressEvent {
@@ -161,14 +171,14 @@ declare global {
       onWorkflowConclusionDetected: (cb: (data: ConclusionDetectedEvent) => void) => void;
       onWorkflowConclusionTable: (cb: (data: ConclusionTableData) => void) => void;
       onWorkflowRoundProgress: (cb: (data: RoundProgressEvent) => void) => void;
-      onWorkflowDebateResult: (cb: (data: { results: AgentResult[]; summary: string }) => void) => void;
-      onWorkflowFinalDecision: (cb: (data: { results: AgentResult[]; decision: string }) => void) => void;
+      onWorkflowDebateResult: (cb: (data: { results: RoundResult[]; summary: string }) => void) => void;
+      onWorkflowFinalDecision: (cb: (data: { results: RoundResult[]; decision: string }) => void) => void;
       onWorkflowError: (cb: (data: { error: string }) => void) => void;
 
       // ── v3: PTY data (for AI windows) ──────────────────────
       onPtyData: (cb: (data: { data: string }) => void) => void;
       onPtyInfo: (cb: (data: { label: string; type: string; sessionId: string }) => void) => void;
-      sendPtyInput: (data: string) => void;
+      sendPtyInput: (windowId: string, data: string) => void;
 
       // ── Core ───────────────────────────────────────────────
       onCoreReady: (cb: (data: object) => void) => void;

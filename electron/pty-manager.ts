@@ -92,6 +92,14 @@ export class PtyManager extends EventEmitter {
     for (const [id] of this.instances) { this.destroy(id); }
   }
 
+  /** 每轮开始前重置——清空 outputBuffer 和 conclusion，允许新结论触发 */
+  resetForNewRound(): void {
+    for (const inst of this.instances.values()) {
+      inst.conclusion = null;
+      inst.outputBuffer = '';
+    }
+  }
+
   send(instanceId: string, message: string): void {
     const inst = this.instances.get(instanceId);
     if (inst) { inst.ptyProcess.write(message + '\n'); }
@@ -113,14 +121,33 @@ export class PtyManager extends EventEmitter {
     return new Promise((resolve) => {
       const results: ConclusionResult[] = [];
       const total = this.instances.size;
+      const concluded = new Set<string>(); // 已返回结论的 instanceId
+      const exited = new Set<string>();    // 已退出的 instanceId
       let settled = 0;
+
       const timer = setTimeout(() => { cleanup(); resolve(results); }, timeoutMs);
 
-      const onConclusion = (result: ConclusionResult) => {
-        results.push(result); settled++;
+      const checkDone = () => {
         if (settled >= total) { clearTimeout(timer); cleanup(); resolve(results); }
       };
-      const onExit = () => { settled++; if (settled >= total) { clearTimeout(timer); cleanup(); resolve(results); } };
+
+      const onConclusion = (result: ConclusionResult) => {
+        if (concluded.has(result.instanceId)) return;
+        concluded.add(result.instanceId);
+        results.push(result);
+        settled++;
+        checkDone();
+      };
+
+      const onExit = (data: { instanceId: string; exitCode: number }) => {
+        if (exited.has(data.instanceId)) return;
+        exited.add(data.instanceId);
+        // 只有未返回过结论的退出才计入 settled（避免双重计数）
+        if (!concluded.has(data.instanceId)) {
+          settled++;
+        }
+        checkDone();
+      };
 
       this.on('conclusion', onConclusion);
       this.on('exit', onExit);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { WorkflowStatus, ConclusionTableData, AgentResult, ConclusionDetectedEvent, RoundProgressEvent } from '../types';
+import type { WorkflowStatus, ConclusionTableData, RoundResult, ConclusionDetectedEvent, RoundProgressEvent } from '../types';
 import { Send, Square, Loader2, MessageSquare, GitCompare, Vote, Activity } from 'lucide-react';
 
 type Tab = 'chat' | 'conclusions' | 'debate';
@@ -177,11 +177,11 @@ export default function WorkflowView() {
               {(workflowStatus?.roundResults?.['1'] || workflowStatus?.roundResults?.[1]) && (
                 <div className="chat-event">
                   <div className="chat-event-header">📋 Round 1 产出</div>
-                  {(workflowStatus.roundResults['1'] || workflowStatus.roundResults[1]).map((r: AgentResult, i: number) => (
-                    <div key={i} className={`chat-agent-msg ${r.error ? 'error' : ''}`}>
-                      <div className="chat-agent-label">{r.agentId}</div>
+                  {(workflowStatus.roundResults['1'] || workflowStatus.roundResults[1]).map((r: RoundResult, i: number) => (
+                    <div key={i} className={`chat-agent-msg ${r.conclusion ? '' : 'error'}`}>
+                      <div className="chat-agent-label">{r.label}</div>
                       <div className="chat-agent-conclusion">
-                        {r.error ? `❌ ${r.error}` : r.conclusion}
+                        {r.conclusion || '⚠️ 未返回结论'}
                       </div>
                       {r.fullOutput && (
                         <details>
@@ -189,7 +189,7 @@ export default function WorkflowView() {
                           <pre className="full-output">{r.fullOutput.slice(0, 5000)}{r.fullOutput.length > 5000 ? '\n...（已截断）' : ''}</pre>
                         </details>
                       )}
-                      <div className="chat-agent-time">{r.durationMs}ms</div>
+                      <div className="chat-agent-time">{r.type}</div>
                     </div>
                   ))}
                 </div>

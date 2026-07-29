@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Terminal</title>
+<link rel="stylesheet" href="vendor/xterm.css">
+<!--
+  Vendor files copied from node_modules by launcher.js at build time:
+  - vendor/xterm.js      ← @xterm/xterm/lib/xterm.js (UMD → window.Terminal)
+  - vendor/addon-fit.js  ← @xterm/addon-fit/lib/addon-fit.js (UMD → window.FitAddon)
+  - vendor/xterm.css     ← @xterm/xterm/css/xterm.css
+-->
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #0d1117;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  #app {
+    display: flex;
+    flex-direction: column;
+    width: 100%; height: 100%;
+  }
+
+  /* ── Header bar ──────────────────────────────── */
+  #header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 14px;
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    flex-shrink: 0;
+    -webkit-app-region: drag;
+    user-select: none;
+  }
+
+  #header .identity {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  #header .badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    letter-spacing: 0.3px;
+  }
+
+  #header .badge.claude { background: #1a3a5c; color: #58a6ff; }
+  #header .badge.codex  { background: #1a3c1a; color: #3fb950; }
+
+  #header .session-id {
+    font-size: 10px;
+    color: #8b949e;
+    font-family: 'SF Mono', 'Cascadia Code', monospace;
+    -webkit-app-region: no-drag;
+    cursor: text;
+  }
+
+  #header .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #3fb950;
+    box-shadow: 0 0 4px #3fb950;
+    flex-shrink: 0;
+  }
+
+  /* ── Terminal container ──────────────────────── */
+  #terminal-container {
+    flex: 1;
+    padding: 4px;
+    background: #0d1117;
+    overflow: hidden;
+  }
+
+  #terminal-container .xterm {
+    height: 100%;
+  }
+
+  /* scrollbar */
+  .xterm-viewport::-webkit-scrollbar { width: 6px; }
+  .xterm-viewport::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+  .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <div class="identity">
+      <span class="status-dot" id="status-dot"></span>
+      <span class="badge" id="badge">AI</span>
+    </div>
+    <span class="session-id" id="session-id" title="Session ID">connecting…</span>
+  </div>
+  <div id="terminal-container"></div>
+</div>
+
+<script src="vendor/xterm.js"></script>
+<script src="vendor/addon-fit.js"></script>
+<script>
+(function () {
+  const api = window.electronAPI;
+  if (!api) {
+    document.body.innerHTML = '<div style="color:#f85149;padding:20px;font-family:sans-serif;">❌ electronAPI 不可用（preload 未加载）</div>';
+    return;
+  }
+
+  // ── Terminal setup ──────────────────────────────────────
+  const term = new Terminal({
+    cursorBlink: true,
+    cursorStyle: 'bar',
+    fontSize: 14,
+    fontFamily: '"SF Mono", "Cascadia Code", "Fira Code", "JetBrains Mono", monospace',
+    theme: {
+      background: '#0d1117',
+      foreground: '#c9d1d9',
+      cursor: '#c9d1d9',
+      selectionBackground: '#264f78',
+      black:   '#484f58',
+      red:     '#ff7b72',
+      green:   '#3fb950',
+      yellow:  '#d29922',
+      blue:    '#58a6ff',
+      magenta: '#bc8cff',
+      cyan:    '#39d2c0',
+      white:   '#b1bac4',
+      brightBlack:   '#6e7681',
+      brightRed:     '#ffa198',
+      brightGreen:   '#56d364',
+      brightYellow:  '#e3b341',
+      brightBlue:    '#79c0ff',
+      brightMagenta: '#d2a8ff',
+      brightCyan:    '#56d4dd',
+      brightWhite:   '#f0f6fc',
+    },
+    cols: 90,
+    rows: 24,
+    allowProposedApi: true,
+  });
+
+  const fitAddon = new FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
+  term.open(document.getElementById('terminal-container'));
+
+  // Fit on load & resize
+  fitAddon.fit();
+  window.addEventListener('resize', () => fitAddon.fit());
+
+  // ── PTY data → terminal ─────────────────────────────────
+  api.onPtyData(({ data }) => {
+    if (data != null) {
+      term.write(data);
+    }
+  });
+
+  // ── Session info ────────────────────────────────────────
+  let ptySessionId = '';
+
+  api.onPtyInfo(({ label, type, sessionId }) => {
+    const badge = document.getElementById('badge');
+    const sidEl = document.getElementById('session-id');
+
+    if (badge) {
+      badge.textContent = label || 'AI';
+      badge.className = 'badge ' + (type || '');
+    }
+    if (sidEl && sessionId) {
+      ptySessionId = sessionId;
+      sidEl.textContent = sessionId.slice(0, 8) + '…';
+    }
+    document.title = (label || 'AI') + ' Terminal';
+  });
+
+  // ── Keyboard input → PTY ───────────────────────────────
+  term.onData((data) => {
+    api.sendPtyInput(ptySessionId, data);
+  });
+
+  // ── Focus terminal on click ─────────────────────────────
+  term.textarea?.focus();
+  document.getElementById('terminal-container')?.addEventListener('click', () => {
+    term.focus();
+  });
+
+})();
+</script>
+</body>
+</html>

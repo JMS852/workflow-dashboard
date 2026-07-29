@@ -6,6 +6,30 @@ try {
   execSync('cmd /c "taskkill /F /IM electron.exe 2>nul & exit 0"', { timeout: 3000 });
 } catch {}
 
+// Step 0: Copy xterm vendor files to public/vendor
+try {
+  const vendorDir = path.join(__dirname, 'public', 'vendor');
+  if (!require('fs').existsSync(vendorDir)) {
+    require('fs').mkdirSync(vendorDir, { recursive: true });
+  }
+  require('fs').copyFileSync(
+    path.join(__dirname, 'node_modules', '@xterm', 'xterm', 'lib', 'xterm.js'),
+    path.join(vendorDir, 'xterm.js'),
+  );
+  require('fs').copyFileSync(
+    path.join(__dirname, 'node_modules', '@xterm', 'addon-fit', 'lib', 'addon-fit.js'),
+    path.join(vendorDir, 'addon-fit.js'),
+  );
+  require('fs').copyFileSync(
+    path.join(__dirname, 'node_modules', '@xterm', 'xterm', 'css', 'xterm.css'),
+    path.join(vendorDir, 'xterm.css'),
+  );
+  console.log('[Launcher] Vendor files copied.');
+} catch (e) {
+  console.error('[Launcher] Failed to copy vendor files:', e.message);
+  process.exit(1);
+}
+
 // Step 1: Compile Electron TypeScript
 console.log('[Launcher] Compiling Electron TypeScript...');
 try {

@@ -107,6 +107,9 @@ export class WorkflowEngine extends EventEmitter {
       return;
     }
 
+    // 每轮开始前重置 conclusion 缓冲，使新结论能再次触发
+    this.ptyManager.resetForNewRound();
+
     // 注入 prompt → 等待结论
     const waitPromise = this.ptyManager.waitForConclusions(this.ROUND_TIMEOUT);
     this.ptyManager.broadcast(prompt);
