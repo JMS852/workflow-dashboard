@@ -3,9 +3,10 @@ import type { ProjectInfo, FileEntry, FileType, Notification } from './types';
 import FileTree from './components/FileTree';
 import ContentViewer from './components/ContentViewer';
 import NotificationBar from './components/NotificationBar';
-import AgentPanel from './components/AgentPanel';
+import AISelector from './components/AISelector';
 import WorkflowView from './components/WorkflowView';
 import { FileText, FolderOpen, RefreshCw, Zap } from 'lucide-react';
+import type { AiWindowInfo, AILaunchConfig } from './types';
 
 export default function App() {
   const [project, setProject] = useState<ProjectInfo | null>(null);
@@ -16,6 +17,8 @@ export default function App() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
   const [showFilePanel, setShowFilePanel] = useState(false);
+  const [aiWindows, setAiWindows] = useState<AiWindowInfo[]>([]);
+  const [aiLaunched, setAiLaunched] = useState(false);
   const notifIdRef = useRef(0);
   const selectedFileRef = useRef<FileEntry | null>(null);
   selectedFileRef.current = selectedFile;
@@ -50,6 +53,29 @@ export default function App() {
     }
     setLoading(false);
   }, []);
+
+  const handleLaunchAIs = useCallback(async (config: AILaunchConfig) => {
+    const api = window.electronAPI;
+    if (!api) return;
+    const result = await api.launchAIs(config);
+    if (result.aiWindows) {
+      setAiWindows(result.aiWindows);
+      setAiLaunched(true);
+      addNotification('workflow', `已启动 ${result.aiWindows.length} 个 AI 窗口`);
+    }
+    if (result.error) {
+      addNotification('agent', `启动失败: ${result.error}`);
+    }
+  }, [addNotification]);
+
+  const handleShutdownAIs = useCallback(async () => {
+    const api = window.electronAPI;
+    if (!api) return;
+    await api.shutdownAIs();
+    setAiWindows([]);
+    setAiLaunched(false);
+    addNotification('workflow', '所有 AI 窗口已关闭');
+  }, [addNotification]);
 
   const selectFile = useCallback(async (file: FileEntry) => {
     const api = window.electronAPI;
@@ -167,6 +193,33 @@ export default function App() {
             <h2>Workflow Dashboard — 信差平台</h2>
             <p>打开项目目录，注册 Claude Code / Codex Agent，开始多 Agent 协作。</p>
             <p className="hint">Agents 会各自产出一个简洁结论，然后互相辩论，最终做出决策。</p>
+            <div className="welcome-config">
+              <div className="config-item">
+                <label>🔑 DeepSeek API Key（信差大脑）</label>
+                <input
+                  type="password"
+                  placeholder="sk-..."
+                  style={{ width: '100%', padding: '6px 10px', background: '#0d1117', border: '1px solid #30363d', borderRadius: '4px', color: '#c9d1d9', fontSize: '13px' }}
+                  onBlur={(e) => {
+                    if (e.target.value.length > 10) {
+                      window.electronAPI?.configureMessenger({ apiKey: e.target.value });
+                    }
+                  }}
+                />
+              </div>
+              <div className="config-item">
+                <label>📡 MQTT Broker（可选）</label>
+                <input
+                  placeholder="mqtt://localhost:1883"
+                  style={{ width: '100%', padding: '6px 10px', background: '#0d1117', border: '1px solid #30363d', borderRadius: '4px', color: '#c9d1d9', fontSize: '13px' }}
+                  onBlur={(e) => {
+                    if (e.target.value) {
+                      window.electronAPI?.configureMqtt(e.target.value);
+                    }
+                  }}
+                />
+              </div>
+            </div>
             <button className="btn btn-primary btn-large" onClick={selectProject}>
               <FolderOpen size={20} />
               选择项目目录
@@ -207,9 +260,16 @@ export default function App() {
             )}
           </main>
 
-          {/* Right: Agent Panel */}
+          {/* Right: AI Selector */}
           <aside className="right-sidebar">
-            <AgentPanel />
+            <AISelector
+              projectDir={project?.projectDir || null}
+              onSelectProject={selectProject}
+              onLaunch={handleLaunchAIs}
+              onShutdown={handleShutdownAIs}
+              aiWindows={aiWindows}
+              launched={aiLaunched}
+            />
           </aside>
         </div>
       )}

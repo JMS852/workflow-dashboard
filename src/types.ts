@@ -21,20 +21,50 @@ export interface FileContent {
 
 export type FileType = 'checkpoint' | 'handoff' | 'stage_gate' | 'decision' | 'project_status' | 'recovery' | 'generic';
 
-// ── Agent ──────────────────────────────────────────────────────
+// ── AI Selection (v3) ────────────────────────────────────────
 
-export type AgentType = 'claude' | 'codex';
+export type AIToolType = 'claude' | 'codex';
 
-export type AgentStatus = 'idle' | 'working' | 'done' | 'error';
-
-export interface AgentConfig {
-  id: string;
-  type: AgentType;
-  label: string;
-  workDir: string;
-  enabled: boolean;
-  cliPath?: string;
+export interface AIToolSelection {
+  type: AIToolType;
+  count: number;
 }
+
+export interface AILaunchConfig {
+  projectDir: string;
+  tools: AIToolSelection[];
+}
+
+export interface AiWindowInfo {
+  id: string;
+  type: AIToolType;
+  label: string;
+  sessionId: string;
+}
+
+// ── Messenger (v3) ───────────────────────────────────────────
+
+export interface ConclusionResult {
+  windowId: string;
+  label: string;
+  type: AIToolType;
+  conclusion: string;
+  fullOutput: string;
+}
+
+export interface MessengerConfig {
+  apiKey: string;
+  model?: string;
+}
+
+export interface ConclusionDetectedEvent {
+  windowId: string;
+  label: string;
+  conclusion: string;
+  round: number;
+}
+
+// ── Agent Result (kept for compatibility) ────────────────────
 
 export interface AgentResult {
   agentId: string;
@@ -59,7 +89,6 @@ export interface WorkflowStatus {
   currentTask: string | null;
   currentRound: number;
   roundResults: Record<string, AgentResult[]>;
-  agentStatuses: Record<string, AgentStatus>;
   error?: string;
 }
 
@@ -69,10 +98,11 @@ export interface ConclusionTableData {
   results: AgentResult[];
 }
 
-export interface AgentStatusEvent {
-  agentId: string;
-  status: AgentStatus;
-  round?: number;
+export interface RoundProgressEvent {
+  round: number;
+  completedCount: number;
+  totalCount: number;
+  status: 'waiting' | 'processing' | 'done';
 }
 
 // ── Notification ──────────────────────────────────────────────
@@ -90,7 +120,7 @@ export interface Notification {
 declare global {
   interface Window {
     electronAPI?: {
-      // File operations
+      // ── File operations ────────────────────────────────────
       selectProject: () => Promise<ProjectInfo | null>;
       openProject: (dir: string) => Promise<ProjectInfo | { error: string }>;
       readFile: (path: string) => Promise<FileContent>;
@@ -104,28 +134,44 @@ declare global {
       onFileChanged: (cb: (data: { path: string; name: string; time: string }) => void) => void;
       onFileRemoved: (cb: (data: { path: string; name: string }) => void) => void;
 
-      // Workflow
+      // ── v3: AI Launch ──────────────────────────────────────
+      launchAIs: (config: AILaunchConfig) => Promise<{ aiWindows: AiWindowInfo[]; error?: string }>;
+      shutdownAIs: () => Promise<{ success: boolean }>;
+      getAiWindows: () => Promise<AiWindowInfo[]>;
+      focusAiWindow: (windowId: string) => Promise<{ success: boolean }>;
+      injectToAiWindow: (windowId: string, message: string) => Promise<{ success: boolean }>;
+
+      // ── v3: Messenger Config ───────────────────────────────
+      configureMessenger: (config: MessengerConfig) => Promise<{ success: boolean }>;
+      getMessengerConfig: () => Promise<MessengerConfig | null>;
+
+      // ── v3: MQTT Config ────────────────────────────────────
+      configureMqtt: (brokerUrl: string) => Promise<{ success: boolean; error?: string }>;
+      getMqttStatus: () => Promise<{ connected: boolean; brokerUrl: string }>;
+
+      // ── v3: MQTT task received ─────────────────────────────
+      onMqttTaskReceived: (cb: (data: { id: string; title: string; description: string; receivedAt: string }) => void) => void;
+
+      // ── Workflow ───────────────────────────────────────────
       workflowSubmitTask: (task: string) => Promise<{ success?: boolean; error?: string }>;
       workflowCancel: () => Promise<{ success: boolean }>;
       workflowGetStatus: () => Promise<WorkflowStatus>;
 
       onWorkflowStateChange: (cb: (data: WorkflowStatus) => void) => void;
-      onWorkflowAgentStatus: (cb: (data: AgentStatusEvent) => void) => void;
+      onWorkflowConclusionDetected: (cb: (data: ConclusionDetectedEvent) => void) => void;
       onWorkflowConclusionTable: (cb: (data: ConclusionTableData) => void) => void;
+      onWorkflowRoundProgress: (cb: (data: RoundProgressEvent) => void) => void;
       onWorkflowDebateResult: (cb: (data: { results: AgentResult[]; summary: string }) => void) => void;
       onWorkflowFinalDecision: (cb: (data: { results: AgentResult[]; decision: string }) => void) => void;
       onWorkflowError: (cb: (data: { error: string }) => void) => void;
 
-      // Agent
-      agentRegister: (config: AgentConfig) => Promise<{ success: boolean }>;
-      agentUnregister: (agentId: string) => Promise<{ success: boolean }>;
-      agentList: () => Promise<AgentConfig[]>;
-      agentCheckAvailability: () => Promise<Record<string, boolean>>;
-      agentUpdateConfig: (config: AgentConfig) => Promise<{ success: boolean }>;
+      // ── v3: PTY data (for AI windows) ──────────────────────
+      onPtyData: (cb: (data: { data: string }) => void) => void;
+      onPtyInfo: (cb: (data: { label: string; type: string; sessionId: string }) => void) => void;
+      sendPtyInput: (data: string) => void;
 
-      // Core
-      onCoreReady: (cb: (data: { claudeAvailable: Record<string, boolean> }) => void) => void;
-
+      // ── Core ───────────────────────────────────────────────
+      onCoreReady: (cb: (data: object) => void) => void;
       removeAllListeners: () => void;
     };
   }

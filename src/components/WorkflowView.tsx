@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { WorkflowStatus, ConclusionTableData, AgentResult } from '../types';
-import { Send, Square, Loader2, MessageSquare, GitCompare, Vote } from 'lucide-react';
+import type { WorkflowStatus, ConclusionTableData, AgentResult, ConclusionDetectedEvent, RoundProgressEvent } from '../types';
+import { Send, Square, Loader2, MessageSquare, GitCompare, Vote, Activity } from 'lucide-react';
 
 type Tab = 'chat' | 'conclusions' | 'debate';
 
@@ -13,6 +13,7 @@ export default function WorkflowView() {
   const [finalDecision, setFinalDecision] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('chat');
   const [statusMsg, setStatusMsg] = useState<string>('');
+  const [aiWindowStatuses, setAiWindowStatuses] = useState<Record<string, string>>({});
   const logRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll log
@@ -42,6 +43,19 @@ export default function WorkflowView() {
       } else if (data.state === 'idle') {
         setRunning(false);
         setStatusMsg('');
+      }
+    });
+
+    api.onWorkflowConclusionDetected((data: ConclusionDetectedEvent) => {
+      setAiWindowStatuses((prev) => ({
+        ...prev,
+        [data.label]: `✅ 结论已提取 · Round ${data.round}`,
+      }));
+    });
+
+    api.onWorkflowRoundProgress((data: RoundProgressEvent) => {
+      if (data.status === 'processing') {
+        setStatusMsg(`信差正在处理 Round ${data.round} 结论...`);
       }
     });
 
@@ -144,6 +158,20 @@ export default function WorkflowView() {
         {/* Chat tab: input + log */}
         {activeTab === 'chat' && (
           <div className="chat-view">
+            {/* AI Window Status Bar */}
+            <div className="ai-status-bar">
+              <Activity size={12} />
+              {Object.entries(aiWindowStatuses).length > 0 ? (
+                Object.entries(aiWindowStatuses).map(([label, status]) => (
+                  <span key={label} className="ai-status-chip">
+                    <span className="ai-chip-label">{label}</span>
+                    <span className="ai-chip-status">{status}</span>
+                  </span>
+                ))
+              ) : (
+                <span className="ai-status-empty">等待 AI 响应...</span>
+              )}
+            </div>
             {/* Conversation log */}
             <div className="chat-log">
               {(workflowStatus?.roundResults?.['1'] || workflowStatus?.roundResults?.[1]) && (

@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>信差平台 v3.0 — 代码修改详细报告</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --card: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --dim: #8b949e;
+    --blue: #58a6ff;
+    --green: #7ee787;
+    --orange: #f0883e;
+    --red: #f85149;
+    --purple: #d2a8ff;
+    --yellow: #f0c000;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    line-height: 1.6;
+    padding: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 28px; margin-bottom: 4px; color: #fff; }
+  h1 span { color: var(--orange); }
+  h2 {
+    font-size: 20px;
+    margin: 32px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    color: #fff;
+  }
+  h3 { font-size: 16px; margin: 20px 0 8px; color: var(--blue); }
+  .subtitle { color: var(--dim); font-size: 14px; margin-bottom: 24px; }
+
+  .summary-cards {
+    display: flex; gap: 12px; margin: 20px 0;
+  }
+  .summary-card {
+    flex: 1; background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px; text-align: center;
+  }
+  .summary-card .num { font-size: 36px; font-weight: bold; }
+  .summary-card .label { font-size: 12px; color: var(--dim); margin-top: 4px; }
+  .num.delete { color: var(--red); }
+  .num.modify { color: var(--orange); }
+  .num.add { color: var(--green); }
+
+  .file-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; margin-bottom: 12px; overflow: hidden;
+  }
+  .file-card-header {
+    padding: 10px 14px; display: flex; align-items: center; gap: 10px;
+    cursor: pointer; user-select: none;
+  }
+  .file-card-header:hover { background: #1c2129; }
+  .file-card-body { padding: 0 14px 14px; display: none; }
+  .file-card.open .file-card-body { display: block; }
+
+  .badge {
+    font-size: 10px; font-weight: bold; padding: 2px 8px;
+    border-radius: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .badge.delete { background: #f8514920; color: var(--red); }
+  .badge.modify { background: #f0883e20; color: var(--orange); }
+  .badge.add { background: #7ee78720; color: var(--green); }
+  .file-path { font-family: 'Consolas', monospace; font-size: 13px; color: var(--text); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 6px 8px; color: var(--dim); font-size: 10px;
+       text-transform: uppercase; border-bottom: 1px solid var(--border); }
+  td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .change-desc { font-size: 12px; color: var(--dim); margin-top: 2px; }
+
+  code {
+    background: #0d1117; color: var(--yellow);
+    padding: 1px 5px; border-radius: 3px; font-size: 12px;
+    font-family: 'Consolas', 'Courier New', monospace;
+  }
+  pre {
+    background: #0d1117; border: 1px solid var(--border);
+    border-radius: 6px; padding: 12px; overflow-x: auto;
+    font-size: 12px; line-height: 1.5;
+  }
+  pre .kw { color: var(--red); }
+  pre .fn { color: var(--purple); }
+  pre .str { color: var(--green); }
+  pre .cm { color: var(--dim); font-style: italic; }
+
+  .flow-diagram {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px; margin: 12px 0;
+    font-family: 'Consolas', monospace; font-size: 11px; line-height: 1.8;
+    white-space: pre; overflow-x: auto;
+  }
+  .flow-diagram .arrow { color: var(--orange); }
+  .flow-diagram .label { color: var(--blue); }
+  .flow-diagram .file { color: var(--green); }
+  .flow-diagram .event { color: var(--purple); }
+
+  .order-list { counter-reset: step; }
+  .order-list li {
+    counter-increment: step; list-style: none;
+    padding: 10px 14px; margin-bottom: 8px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+    display: flex; align-items: flex-start; gap: 12px;
+  }
+  .order-list li::before {
+    content: counter(step);
+    background: var(--blue); color: #000;
+    width: 24px; height: 24px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: bold; flex-shrink: 0;
+  }
+
+  .toggle-all {
+    background: var(--card); border: 1px solid var(--border);
+    color: var(--text); padding: 6px 16px; border-radius: 6px;
+    cursor: pointer; font-size: 12px; margin-bottom: 12px;
+  }
+  .toggle-all:hover { background: #1c2129; }
+</style>
+</head>
+<body>
+
+<h1>信差平台 <span>v2 → v3</span></h1>
+<p class="subtitle">代码修改详细报告 · 2026-07-29</p>
+
+<div class="summary-cards">
+  <div class="summary-card">
+    <div class="num delete">4</div>
+    <div class="label">文件删除</div>
+  </div>
+  <div class="summary-card">
+    <div class="num modify">6</div>
+    <div class="label">文件改造</div>
+  </div>
+  <div class="summary-card">
+    <div class="num add">6</div>
+    <div class="label">文件新增</div>
+  </div>
+  <div class="summary-card">
+    <div class="num" style="color:var(--blue);">16</div>
+    <div class="label">总计变动</div>
+  </div>
+</div>
+
+<button class="toggle-all" onclick="document.querySelectorAll('.file-card').forEach(c=>c.classList.toggle('open'))">
+  展开/折叠全部
+</button>
+
+<!-- ============================================================ -->
+<h2>🗑 删除的文件（4 个）</h2>
+<!-- ============================================================ -->
+
+<div class="file-card">
+  <div class="file-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="badge delete">删除</span>
+    <span class="file-path">electron/agent-manager.ts</span>
+    <span style="margin-left:auto;color:var(--dim);font-size:12px;">524 行</span>
+  </div>
+  <div class="file-card-body">
+    <p>整个文件删除。<strong>原因：</strong></p>
+    <ul style="font-size:13px; color:var(--dim); margin-top:4px; padding-left:20px;">
+      <li>Agent 注册模型（ID、类型、显示名、工作目录、CLI 路径）→ 改为 AI 选择面板</li>
+      <li><code>spawn()</code> 后台非交互 CLI → 改为 node-pty + xterm.js 可见终端窗口</li>
+      <li><code>buildAgentPrompt()</code> / <code>extractConclusion()</code> → 信差 LLM 替代</li>
+      <li><code>runAgentRound()</code> / <code>runAllAgentsRound()</code> → PTY Manager 替代</li>
+    </ul>
+    <table style="margin-top:12px;">
+      <tr><th>被替换的功能</th><th>新位置</th></tr>
+      <tr><td><code>AgentConfig</code> 类型</td><td>移到 <code>src/types.ts</code>（大幅简化）</td></tr>
+      <tr><td><code>extractConclusion()</code></td><td>移到 <code>electron/messenger-brain.ts</code>（LLM 版）</td></tr>
+      <tr><td>CLI spawn 逻辑</td><td>移到 <code>electron/pty-manager.ts</code></td></tr>
+      <tr><td>结论表构建</td><td>移到 <code>electron/messenger-brain.ts</code></td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="file-card">
+  <div class="file-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="badge delete">删除</span>
+    <span class="file-path">electron/session-store.ts</span>
+    <span style="margin-left:auto;color:var(--dim);font-size:12px;">~120 行</span>
+  </div>
+  <div class="file-card-body">
+    <p>整个文件删除。<strong>原因：</strong>旧 session 管理为 CLI <code>--session-id</code> 持久化服务。</p>
+    <p style="color:var(--dim);font-size:13px;">
+      PTY 模式下 session 由终端进程自身维持（node-pty 保持进程存活，CLI 自己记住上下文）。
+      对话历史改为写入 <code>.multi-ai-workflow/sessions/</code> 由信差管理。
+    </p>
+  </div>
+</div>
+
+<div class="file-card">
+  <div class="file-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="badge delete">删除</span>
+    <span class="file-path">src/components/AgentPanel.tsx</span>
+    <span style="margin-left:auto;color:var(--dim);font-size:12px;">178 行</span>
+  </div>
+  <div class="file-card-body">
+    <p>整个文件删除。<strong>原因：</strong>Agent 注册表单（ID、类型、显示名、工作目录输入框）不再需要。</p>
+    <p style="color:var(--dim);font-size:13px;">替换为新的 <code>AISelector.tsx</code>：勾选 AI 类型 + 数量下拉框 + 一键启动按钮。</p>
+  </div>
+</div>
+
+<div class="file-card">
+  <div class="file-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="badge delete">删除</span>
+    <span class="file-path">engine/ 目录（Python 组件）</span>
+    <span style="margin-left:auto;color:var(--dim);font-size:12px;">~200 行</span>
+  </div>
+  <div class="file-card-body">
+    <p><strong>原因：</strong>v1 遗留的 AI API 调用路由和 Python 沙箱组件。v3 改为纯 TypeScript/Electron 架构，Python 组件不再需要。</p>
+    <p style="color:var(--dim);font-size:13px;">
+      保留 <code>engine/mqtt_client.py</code> 作为可选项（供 Python 生态的外部系统接入 MQTT）。
+      其余全部归档到 <code>_archive/</code>。
+    </p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2>🔧 改造的文件（6 个）</h2>
+<!-- ============================================================ -->
+
+<div class="file-card">
+  <div class="file-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="badge modify">改造</span>
+    <span class="file-path">electron/main.ts</span>
+    <span style="margin-left:auto;color:var(--dim);font-size:12px;">383 行 → ~250 行</span>
+  </div>
+  <div class="file-card-body">
+    <table>
+      <tr><th style="width:40%;">改动</th><th>说明</th></tr>
+      <tr>
+        <td><strong>删除</strong><br><code>import { SessionStore }</code><br><code>import { AgentManager, AgentConfig }</code></td>
+        <td>旧模块不再使用
+          <div class="change-desc">替换为 PTY Manager + Messenger Brain + Window Manager</div>
+        </td>
+      </tr>
+      <tr>
+        <td><strong>删除</strong><br><code>const sessionStore = new SessionStore(null)</code><br><code>const agentManager = new AgentManager(sessionStore)</code><br><code>const workflowEngine = new WorkflowEngine(agentManager)</code></td>
+        <td>旧的三个核心服务
+          <div class="change-desc">替换为新的初始化链</div>
+        </td>
+      </tr>
+      <tr>
+        <td><strong>新增</strong><br><code>import { PtyManager }</code><br><code>import { MessengerBrain }</code><br><code>import { WindowManager }</code><br><code>import { MqttClient }</code></td>
+        <td>四个新模块</td>
+      </tr>
+      <tr>
+        <td><strong>新增</strong><br><code>const ptyManager = new PtyManager()</code><br><code>const messengerBrain = new MessengerBrain(apiKey)</code><br><code>const windowManager = new WindowManager()</code><br><code>const mqttClient = new MqttClient()</code><br><code>const workflowEngine = new WorkflowEngine(ptyManager, messengerBrain)</code></td>
+        <td>新的初始化链
+          <div class="change-desc">WorkflowEngine 不再依赖 AgentManager，改为依赖 PTY + LLM</div>
+        </td>
+      </tr>
+      <tr>
+        <td><strong>新增 IPC handlers</strong></td>
+        <td>
+          <code>launch-ais</code> — 启动所有 AI 窗口<br>
+          <code>workflow-manual-inject</code> — 用户手动插话转发<br>
+          <code>ai-window-close / ai-window-focus</code> — 窗口管理<br>
+          <code>mqtt-configure</code> — MQTT Broker 配置<br>
+          <code>messenger-config</code> — DeepSeek API Key 配置
+        </td>
+      </tr>
+      <tr>
+        <td><strong>删除 IPC handlers</strong></td>
+        <td>
+          <code>agent-register / agent-unregister / agent-list / agent-check-availability / agent-update-config</code>
+        </td>
+      </tr>
+      <tr>
+        <td><strong>新增生命周期</strong></td>
+        <td>
+          <code>app.on('before-quit')</code> → 杀死所有 PTY 进程<br>
+          窗口关闭事件 → 检查是否是 AI 窗口，隐藏而非退出
+        </td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="file-card">
+  <div class="file-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="badge modify">改造</span>
+    <span class="file-path">electron/workflow-engine.ts</span>
+    <span style="margin-left:auto;color:var(--dim);font-size:12px;">271 行 → ~200 行</span>
+  </div>
+  <div class="file-card-body">
+    <table>
+      <tr><th style="width:40%;">改动</th><th>说明</th></tr>
+      <tr>
+        <td><strong>构造函数变更</strong><br><code>constructor(agentManager: AgentManager)</code><br>→ <code>constructor(ptyManager: PtyManager, messengerBrain: MessengerBrain)</code></td>
+        <td>依赖从 AgentManager 改为 PTY Manager + 信差 LLM</td>
+      </tr>
+      <tr>
+        <td><strong>删除</strong><br><code>this.agentManager.runAllAgentsRound()</code> 调用</td>
+        <td>不再调用 CLI spawn 方法</td>
+      </tr>
+      <tr>
+        <td><strong>新增</strong><br><code>ptyManager.broadcast(message)</code><br><code>ptyManager.waitForConclusions(timeout)</code><br><code>messengerBrain.extractConclusions(outputs)</code><br><code>messengerBrain.buildForwardMessage(conclusions, round, task)</code></td>
+        <td>新的一轮执行流程：
+          <div class="change-desc">
+            ① broadcast 发送消息到所有 PTY →<br>
+            ② 监听每个 PTY 的输出，检测结论标记 →<br>
+            ③ 所有 AI 完成或超时 → 信差 LLM 处理 →<br>
+            ④ 构建下轮消息 → broadcast
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td><strong>新增</strong><br>MQTT 发布钩子<br><code>this.mqttClient?.publish(topic, data)</code></td>
+        <td>每轮结束 → 发布到 MQTT（如果有）</td>
+      </tr>
+      <tr>
+        <td><strong>保持不变</strong></td>
+        <td>三轮状态机逻辑、事件发射器、取消机制</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="file-card">
+  <div class="file-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="badge modify">改造</span>
+    <span class="file-path">electron/preload.ts</span>
+    <span style="margin-left:auto;color:var(--dim);font-size:12px;">75 行 → ~90 行</span>
+  </div>
+  <div class="file-card-body">
+    <table>
+      <tr><th style="width:40%;">改动</th><th>说明</th></tr>
+      <tr>
+        <td><strong>删除</strong><br><code>agentRegister / agentUnregister / agentList / agentCheckAvailability / agentUpdateConfig</code></td>
+        <td>Agent 管理 API 全部删除</td>
+      </tr>
+      <tr>
+        <td><strong>新增</strong><br><code>launchAIs(config: AILaunchConfig)</code><br><code>configureMessenger(apiKey: string)</code><br><code>configureMqtt(brokerUrl: string)</code><br><code>getAiWindows(): AiWindowInfo[]</code><br><code>focusAiWindow(windowId: string)</code><br><code>manualInject(windowId: string, message: string)</code></td>
+        <td>新的 IPC 接口</td>
+      </tr>
+      <tr>
+        <td><strong>新增事件监听</strong><br><code>onAiWindowClosed / onAiWindowCreated</code><br><code>onConclusionDetected / onRoundCompleted</code></td>
+        <td>新的事件通知</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="file-card">
+  <div class="file-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="badge modify">改造</span>
+    <span class="file-path">src/types.ts</span>
+    <span style="margin-left:auto;color:var(--dim);font-size:12px;">133 行 → ~100 行</span>
+  </div>
+  <div class="file-card-body">
+    <table>
+      <tr><th style="width:40%;">改动</th><th>说明</th></tr>
+      <tr>
+        <td><strong>删除</strong><br><code>AgentType</code> | <code>AgentStatus</code> | <code>AgentConfig</code> | <code>AgentResult</code> | <code>AgentStatusEvent</code></td>
+        <td>旧 Agent 相关类型</td>
+      </tr>
+      <tr>
+        <td><strong>新增</strong></td>
+        <td>
+          <code>AIToolType = 'claude' | 'codex'</code><br>
+          <code>AILaunchConfig = { projectDir: string; tools: { type: AIToolType; count: number }[] }</code><br>
+          <code>AiWindowInfo = { id: string; type: AIToolType; label: string; sessionId: string }</code><br>
+          <code>ConclusionResult = { windowId: string; label: string; conclusion: string; fullOutput: string }</code><br>
+          <code>MessengerConfig = { apiKey: string; model?: string }</code>
+        </td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="file-card">
+  <div class="file-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="badge modify">改造</span>
+    <span class="file-path">src/App.tsx</span>
+    <span style="margin-left:auto;color:var(--dim);font-size:12px;">219 行 → ~230 行</span>
+  </div>
+  <div class="file-card-body">
+    <table>
+      <tr><th style="width:40%;">改动</th><th>说明</th></tr>
+      <tr>
+        <td><strong>删除</strong><br><code>import AgentPanel</code></td>
+        <td>Agent 面板组件移除</td>
+      </tr>
+      <tr>
+        <td><strong>新增</strong><br><code>import AISelector</code><br><code>import MessengerConfig from './components/MessengerConfig'</code></td>
+        <td>新的启动前配置组件</td>
+      </tr>
+      <tr>
+        <td><strong>右侧边栏改动</strong><br><code>&lt;AgentPanel /&gt;</code> → <code>&lt;AISelector /&gt;</code></td>
+        <td>不显示 Agent 列表，显示 AI 选择面板</td>
+      </tr>
+      <tr>
+        <td><strong>新增状态</strong><br><code>aiLaunched: boolean</code><br><code>aiWindows: AiWindowInfo[]</code></td>
+        <td>跟踪已启动的 AI 窗口</td>
+      </tr>
+      <tr>
+        <td><strong>新增</strong>启动前配置视图<br>（未选择项目时显示）</td>
+        <td>包含 AISelector + MessengerConfig（API Key 输入） + 项目选择 + 启动按钮</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="file-card">
+  <div class="file-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="badge modify">改造</span>
+    <span class="file-path">src/components/WorkflowView.tsx</span>
+    <span style="margin-left:auto;color:var(--dim);font-size:12px;">315 行 → ~350 行</span>
+  </div>
+  <div class="file-card-body">
+    <table>
+      <tr><th style="width:40%;">改动</th><th>说明</th></tr>
+      <tr>
+        <td><strong>新增</strong> AI 窗口状态面板</td>
+        <td>显示每个 AI 窗口的在线状态、当前输出长度、最新结论预览</td>
+      </tr>
+      <tr>
+        <td><strong>新增</strong>插入「信差处理中」状态</td>
+        <td>所有 AI 完成 → 显示「信差正在处理结论...」→ 结论对比表产出</td>
+      </tr>
+      <tr>
+        <td><strong>新增</strong> MQTT 任务到达通知</td>
+        <td>通过 MQTT 收到的任务在对话记录中显示来源</td>
+      </tr>
+      <tr>
+        <td><strong>改造</strong>结论对比表渲染</td>
+        <td>支持去重标注（「Claude #1 和 #2 意见一致」）、差异高亮</td>
+      </tr>
+      <tr>
+        <td><strong>保持不变</strong></td>
+        <td>三个 Tab（对话/结论对比/辩论决策）、输入框、取消按钮</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2>➕ 新增的文件（6 个）</h2>
+<!-- ============================================================ -->
+
+<div class="file-card">
+  <div class="file-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="badge add">新增</span>
+    <span class="file-path">electron/pty-manager.ts</span>
+    <span style="margin-left:auto;color:var(--dim);font-size:12px;">~200 行</span>
+  </div>
+  <div class="file-card-body">
+    <p><strong>职责：</strong>管理所有 PTY 实例——创建、销毁、读写、结论检测。</p>
+    <pre><span class="kw">export class</span> <span class="fn">PtyManager</span> {
+  <span class="cm">// 创建一个 AI 的 PTY 实例</span>
+  <span class="fn">create</span>(type: <span class="str">'claude'</span> | <span class="str">'codex'</span>, projectDir: string): PtyInstance
+
+  <span class="cm">// 销毁一个 AI 的 PTY</span>
+  <span class="fn">destroy</span>(instanceId: string): void
+
+  <span class="cm">// 向所有 PTY 广播消息</span>
+  <span class="fn">broadcast</span>(message: string): void
+
+  <span class="cm">// 向单个 PTY 发送消息</span>
+  <span class="fn">send</span>(instanceId: string, message: string): void
+
+  <span class="cm">// 获取所有 PTY 的输出缓冲区</span>
+  <span class="fn">getAllOutputs</span>(): Map&lt;string, string&gt;
+
+  <span class="cm">// 监听输出中的结论标记</span>
+  <span class="fn">onConclusion</span>(instanceId: string, callback: (text: string) => void): void
+
+  <span class="cm">// 等待所有活跃 PTY 输出结论（带超时）</span>
+  <span class="fn">waitForConclusions</span>(timeoutMs: number): Promise&lt;ConclusionResult[]&gt;
+}</pre>
+    <p style="margin-top:8px; font-size:13px; color:var(--dim);">
+      依赖：<code>node-pty</code>（需 npm install）。核心工作：spawn CLI 进程 → 收集 stdout → 正则检测 <code>──结论──</code> 标记 → 回调通知。
+    </p>
+  </div>
+</div>
+
+<div class="file-card">
+  <div class="file-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="badge add">新增</span>
+    <span class="file-path">electron/messenger-brain.ts</span>
+    <span style="margin-left:auto;color:var(--dim);font-size:12px;">~180 行</span>
+  </div>
+  <div class="file-card-body">
+    <p><strong>职责：</strong>调用 DeepSeek API，做消息的提取、去重、精简、打包。</p>
+    <pre><span class="kw">export class</span> <span class="fn">MessengerBrain</span> {
+  <span class="kw">constructor</span>(apiKey: string, model?: string)
+
+  <span class="cm">// 从多个 AI 的完整输出中提取核心结论</span>
+  <span class="fn">extractConclusions</span>(outputs: Map&lt;string, string&gt;): Promise&lt;ConclusionResult[]&gt;
+
+  <span class="cm">// 去重：合并相似结论，标注重复</span>
+  <span class="fn">deduplicate</span>(conclusions: ConclusionResult[]): Promise&lt;DeduplicatedResult[]&gt;
+
+  <span class="cm">// 构建转发消息（含对比表 + 指令）</span>
+  <span class="fn">buildForwardMessage</span>(
+    conclusions: DeduplicatedResult[],
+    round: number,
+    task: string
+  ): Promise&lt;string&gt;
+
+  <span class="cm">// 直接调用 DeepSeek（轻量 prompt）</span>
+  <span class="fn">private askLLM</span>(systemPrompt: string, userContent: string): Promise&lt;string&gt;
+}</pre>
+    <p style="margin-top:8px; font-size:13px; color:var(--dim);">
+      依赖：<code>@anthropic-ai/sdk</code> 或直接用 <code>fetch</code> 调 DeepSeek API。
+      API endpoint: <code>https://api.deepseek.com/v1/chat/completions</code>。
+    </p>
+    <table style="margin-top:12px;">
+      <tr><th>轮次</th><th>信差 LLM 的任务</th><th>预估 token</th></tr>
+      <tr><td>Round 1 结束</td><td>提取 4 个 AI 的结论 → 去重 → 生成对比表 + 辩论指令</td><td>~800</td></tr>
+      <tr><td>Round 2 结束</td><td>整理辩论 → 去重 → 生成辩论汇总 + 投票指令</td><td>~600</td></tr>
+      <tr><td>Round 3 结束</td><td>汇总投票 → 生成最终决策报告</td><td>~400</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="file-card">
+  <div class="file-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="badge add">新增</span>
+    <span class="file-path">electron/window-manager.ts</span>
+    <span style="margin-left:auto;color:var(--dim);font-size:12px;">~150 行</span>
+  </div>
+  <div class="file-card-body">
+    <p><strong>职责：</strong>创建和管理每个 AI 的独立 BrowserWindow。</p>
+    <pre><span class="kw">export class</span> <span class="fn">WindowManager</span> {
+  <span class="cm">// 为一个 AI 创建独立桌面窗口</span>
+  <span class="fn">createAiWindow</span>(info: AiWindowInfo, ptyInstance: PtyInstance): BrowserWindow
+
+  <span class="cm">// 关闭 AI 窗口（默认隐藏而不退出）</span>
+  <span class="fn">closeAiWindow</span>(windowId: string): void
+
+  <span class="cm">// 获取所有 AI 窗口</span>
+  <span class="fn">getAllWindows</span>(): AiWindowState[]
+
+  <span class="cm">// 聚焦某个 AI 窗口</span>
+  <span class="fn">focusWindow</span>(windowId: string): void
+
+  <span class="cm">// 排列所有窗口（平铺/层叠）</span>
+  <span class="fn">tileWindows</span>(): void
+}</pre>
+    <p style="margin-top:8px; font-size:13px; color:var(--dim);">
+      每个 AI 窗口加载一个只包含 xterm.js 的极简 HTML 页面。
+      窗口属性：<code>{ width: 600, height: 500, title: 'Claude #1', ... }</code>。
+      关闭行为：<code>event.preventDefault() + window.hide()</code>（模仿主窗口的托盘隐藏逻辑）。
+    </p>
+  </div>
+</div>
+
+<div class="file-card">
+  <div class="file-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="badge add">新增</span>
+    <span class="file-path">electron/mqtt-client.ts</span>
+    <span style="margin-left:auto;color:var(--dim);font-size:12px;">~100 行</span>
+  </div>
+  <div class="file-card-body">
+    <p><strong>职责：</strong>MQTT 任务订阅 + 结果发布（可选模块）。</p>
+    <pre><span class="kw">export class</span> <span class="fn">MqttClient</span> {
+  <span class="kw">constructor</span>(brokerUrl?: string)
+
+  <span class="cm">// 连接到 MQTT Broker</span>
+  <span class="fn">connect</span>(brokerUrl: string): Promise&lt;void&gt;
+
+  <span class="cm">// 订阅任务主题</span>
+  <span class="fn">subscribeToTasks</span>(callback: (task: MqttTask) => void): void
+
+  <span class="cm">// 发布结果</span>
+  <span class="fn">publishResult</span>(taskId: string, data: object): void
+
+  <span class="cm">// 发布轮次结果</span>
+  <span class="fn">publishRoundResult</span>(taskId: string, round: number, data: object): void
+
+  <span class="cm">// 断开连接</span>
+  <span class="fn">disconnect</span>(): void
+}</pre>
+    <p style="margin-top:8px; font-size:13px; color:var(--dim);">
+      依赖：<code>mqtt</code>（需 npm install）。Topics：
+      <code>workflow/tasks/new</code>（订阅），
+      <code>workflow/results/{taskId}</code>（发布）。
+      如果用户不配置 MQTT，Dashboard 仍可手动输入任务正常工作。
+    </p>
+  </div>
+</div>
+
+<div class="file-card">
+  <div class="file-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="badge add">新增</span>
+    <span class="file-path">src/components/AISelector.tsx</span>
+    <span style="margin-left:auto;color:var(--dim);font-size:12px;">~120 行</span>
+  </div>
+  <div class="file-card-body">
+    <p><strong>职责：</strong>启动前的 AI 选择面板——替代旧的 AgentPanel。</p>
+    <p style="font-size:13px;">UI 结构：</p>
+    <ul style="font-size:13px; color:var(--dim); padding-left:20px;">
+      <li>📁 项目文件夹选择（Browse 按钮 + 路径显示）</li>
+      <li>✅ Claude Code：勾选框 + 数量下拉（1-3）</li>
+      <li>✅ Codex：勾选框 + 数量下拉（1-3）</li>
+      <li>🔑 信差 API Key 输入（DeepSeek）</li>
+      <li>📡 MQTT Broker URL（可选）</li>
+      <li>🚀 一键启动按钮</li>
+    </ul>
+    <p style="margin-top:4px; font-size:12px; color:var(--dim);">
+      启动后 → IPC 调用 <code>launchAIs(config)</code> → 主进程创建 PTY + 打开窗口 → 返回窗口列表。
+    </p>
+  </div>
+</div>
+
+<div class="file-card">
+  <div class="file-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="badge add">新增</span>
+    <span class="file-path">public/ai-terminal.html</span>
+    <span style="margin-left:auto;color:var(--dim);font-size:12px;">~80 行</span>
+  </div>
+  <div class="file-card-body">
+    <p><strong>职责：</strong>每个 AI 桌面窗口加载的 HTML 页面——只包含一个 xterm.js 终端。</p>
+    <pre>&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+  &lt;title id="title"&gt;AI Terminal&lt;/title&gt;
+  &lt;link rel="stylesheet" href="xterm.css" /&gt;
+&lt;/head&gt;
+&lt;body style="margin:0;background:#000;"&gt;
+  &lt;div id="terminal" style="width:100%;height:100vh;"&gt;&lt;/div&gt;
+  &lt;script src="xterm.js"&gt;&lt;/script&gt;
+  &lt;script src="ai-terminal-renderer.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+    <p style="margin-top:8px; font-size:13px; color:var(--dim);">
+      配合 <code>public/ai-terminal-renderer.js</code>：接收主进程传来的 PTY 数据 → xterm.write()。
+      用户键盘输入 → IPC 发给主进程 → PTY.stdin.write()。
+    </p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2>📦 新增 npm 依赖</h2>
+<!-- ============================================================ -->
+
+<div class="file-card">
+  <div class="file-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="badge add">依赖</span>
+    <span class="file-path">package.json 新增 4 个包</span>
+  </div>
+  <div class="file-card-body">
+    <table>
+      <tr><th>包</th><th>版本</th><th>用途</th></tr>
+      <tr><td><code>node-pty</code></td><td>^1.0.0</td><td>伪终端——spawn CLI 进程，读写 stdin/stdout</td></tr>
+      <tr><td><code>xterm</code></td><td>^5.3.0</td><td>终端渲染——在 BrowserWindow 里显示 PTY 输出</td></tr>
+      <tr><td><code>@xterm/addon-fit</code></td><td>^0.10.0</td><td>xterm 插件——终端自动适应窗口大小</td></tr>
+      <tr><td><code>mqtt</code></td><td>^5.6.0</td><td>MQTT 客户端——订阅任务 + 发布结果</td></tr>
+    </table>
+    <p style="margin-top:8px; font-size:12px; color:var(--dim);">
+      注意：<code>node-pty</code> 是原生模块，需要 <code>electron-rebuild</code> 对 Electron 版本重新编译。
+    </p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2>🔄 数据流：一轮工作流中的消息传递</h2>
+<!-- ============================================================ -->
+
+<div class="flow-diagram">
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      <span class="label">Round 1 产出 · 数据流</span>                              │
+│                                                                         │
+│  用户输入任务                  信差 LLM 处理                  AI 窗口      │
+│  ┌──────────┐                ┌──────────────┐           ┌────────────┐  │
+│  │ 控制台    │──broadcast──→  │ PtyManager   │──write──→ │ Claude #1  │  │
+│  │ 输入框    │                │ .broadcast() │──write──→ │ Claude #2  │  │
+│  └──────────┘                │              │──write──→ │ Codex #1   │  │
+│                              │              │──write──→ │ Codex #2   │  │
+│                              └──────┬───────┘           └─────┬──────┘  │
+│                                     │                         │         │
+│                              stdout 回流                  每个 AI 输出   │
+│                                     │                    ┌────┴──────┐  │
+│                              ┌──────▼───────┐            │ ──结论──  │  │
+│                              │ PtyManager    │←──read────│ 核心方案  │  │
+│                              │ .onConclusion│            │ ────────  │  │
+│                              └──────┬───────┘            └───────────┘  │
+│                                     │                                    │
+│                              4 份输出到齐                                │
+│                                     │                                    │
+│                              ┌──────▼──────────┐                        │
+│                              │ MessengerBrain   │  ← DeepSeek API       │
+│                              │ .extractConclusions()                    │
+│                              │ .deduplicate()                          │
+│                              │ .buildForwardMessage()                   │
+│                              └──────┬──────────┘                        │
+│                                     │                                    │
+│                          对比表 + 辩论指令                               │
+│                                     │                                    │
+│                              ┌──────▼───────┐                           │
+│                              │ PtyManager    │──write──→ 所有 AI 窗口    │
+│                              │ .broadcast() │          (Round 2 开始)   │
+│                              └──────────────┘                           │
+│                                                                         │
+│                              ┌──────────────┐                           │
+│                              │ MqttClient    │──publish──→ MQTT Broker  │
+│                              │ .publishRound│                           │
+│                              └──────────────┘                           │
+└─────────────────────────────────────────────────────────────────────────┘
+</div>
+
+<!-- ============================================================ -->
+<h2>📋 实现顺序</h2>
+<!-- ============================================================ -->
+
+<ol class="order-list">
+  <li>
+    <div>
+      <strong>环境准备</strong><br>
+      <span style="color:var(--dim);font-size:13px;">
+        npm install node-pty xterm @xterm/addon-fit mqtt<br>
+        electron-rebuild 重编译 node-pty<br>
+        在 package.json 新增依赖项
+      </span>
+    </div>
+  </li>
+  <li>
+    <div>
+      <strong>PtyManager — PTY 基础设施</strong><br>
+      <span style="color:var(--dim);font-size:13px;">
+        新建 electron/pty-manager.ts。<br>
+        实现 create / destroy / broadcast / onConclusion。<br>
+        验证：手动创建一个 PTY 跑 claude，检查 stdout 是否正常读取。
+      </span>
+    </div>
+  </li>
+  <li>
+    <div>
+      <strong>AI 终端窗口 — 可见性</strong><br>
+      <span style="color:var(--dim);font-size:13px;">
+        新建 electron/window-manager.ts + public/ai-terminal.html + public/ai-terminal-renderer.js。<br>
+        每个 AI 一个 BrowserWindow，加载 xterm.js。<br>
+        验证：启动后能看到桌面弹出 AI 窗口，xterm 渲染 PTY 输出。
+      </span>
+    </div>
+  </li>
+  <li>
+    <div>
+      <strong>MessengerBrain — 信差大脑</strong><br>
+      <span style="color:var(--dim);font-size:13px;">
+        新建 electron/messenger-brain.ts。<br>
+        实现 DeepSeek API 调用 + extractConclusions / buildForwardMessage。<br>
+        验证：输入模拟的 AI 输出 → 检查是否返回正确的对比表。
+      </span>
+    </div>
+  </li>
+  <li>
+    <div>
+      <strong>WorkflowEngine — 改造为 PTY 驱动</strong><br>
+      <span style="color:var(--dim);font-size:13px;">
+        改造 electron/workflow-engine.ts。<br>
+        删除 AgentManager 依赖 → 改为 PtyManager + MessengerBrain。<br>
+        验证：启动一个假任务 → 检查三轮是否自动推进。
+      </span>
+    </div>
+  </li>
+  <li>
+    <div>
+      <strong>MQTT 客户端 — 任务入口/出口</strong><br>
+      <span style="color:var(--dim);font-size:13px;">
+        新建 electron/mqtt-client.ts。<br>
+        实现 connect / subscribeToTasks / publishResult。<br>
+        验证：用 mosquitto_pub 发任务 → Dashboard 收到并启动工作流。
+      </span>
+    </div>
+  </li>
+  <li>
+    <div>
+      <strong>AISelector + 前端改造</strong><br>
+      <span style="color:var(--dim);font-size:13px;">
+        新建 src/components/AISelector.tsx。<br>
+        改造 App.tsx / WorkflowView.tsx / preload.ts / types.ts。<br>
+        验证：完整启动流程——选项目 → 选 AI → 启动 → 看到窗口 → 任务执行。
+      </span>
+    </div>
+  </li>
+  <li>
+    <div>
+      <strong>清理旧代码 + 端到端测试</strong><br>
+      <span style="color:var(--dim);font-size:13px;">
+        删除 AgentPanel.tsx / agent-manager.ts / session-store.ts。<br>
+        端到端测试：启动 2×Claude + 2×Codex → 输入任务 → 观察三轮完整执行。
+      </span>
+    </div>
+  </li>
+</ol>
+
+<script>
+  // 页面加载后自动展开所有 file-card
+  // 用户可点击 toggle-all 按钮切换
+</script>
+</body>
+</html>
